@@ -3,18 +3,25 @@ A global Git(Hub)-based Key-Value DataBase to empower you 💪
 
 > ⚠️ This project is currently under heavy development, and therefore, should be treated as incomplete and unstable. **However, I hope to release an alpha-version pretty soon 🤞**. If it piqued your interest, I request you to [watch this repository](https://github.com/SomajitDey/git-keyval.js "Hit the Watch button of this repository, if you're logged in GitHub") and ⭐ it to encourage me.
 
-# Design goals (and constraints) cum Features
+# Design goals(and constraints)-cum-Features
 
 ### Database
-- Global key-value database 🌐, with reads served by CDN
+- Global key-value database 🌐, with multi-region reads served and cached by CDN (hence global).
 - A GitHub DB-repo upstream as the single source of truth
+- Reads are also served by GitHub GraphQL API - fast and efficient compared to the REST API
+- Data is read from multiple sources (viz. CDNs, GraphQL, raw.githubusercontents.com) concurrently, and the freshest is shown to the user. This ensures speed and availability as well as CDN-cache priming. Even if GitHub experiences a downtime, CDNs can serve previously seen records from cache.
+- Writes are served by Workflow runs using a Upstash Redis DB, or directly through GraphQL API (mutation requests). If using Workflows, writes are retried periodically in case GitHub is down temporarily
 - Write concurrency
-- Support for most, if not all, [JS primitives](https://developer.mozilla.org/en-US/docs/Glossary/Primitive "Javascript's elemental data types, e.g. number, string, boolean, null, undefined")
-- Key expiry and automated removal of stale keys
-- Aggressive compression, not to blow up the DB-repo. Sorry, no persistent version control 🙏. But can restore earlier versions till garbage-collection at the GitHub remote
-- Automated repo maintenance not to abuse GitHub. Because, as users, we can't trigger a garbage-collection at the GitHub remote
+- Anything can be a key or value, as long as it is serializable with `JSON.stringify()`. Keys generate unique Base64 indices (UUIDs), based on which they can be lexicographically sorted. Records may be accessed by the key or its UUID. Last-mile CDNs may be picked based on the UUID as a 1-to-1 map, for better caching guarantees
+- Scanning for all entries, i.e. key-val pairs, should be available and should be fast. To implement this, any given key generates a commit with constant commit-metadata for all keys. The UUID is the base64-URL of the commit-SHA. 
+- Key expiry and automated removal of stale keys. Minimum TTL => 1 day. Garbage collection runs daily. Option to persist records. Expire day index (i.e. `floor(UnixTime/86400)`) is stored as a tag, named in the format `UUID-EXPIRE_DAY_INDEX`, pointing to the commit for that key (the one with SHA = UUID)
+- Aggressive compression and deduplication, not to blow up the DB-repo with a huge object store and big packfiles, at the cost of version control and authentic commit metadata.
+- Automated repo maintenance (through rename-(template)forking-delete cycles) not to abuse GitHub. Because, as users, we can't trigger a garbage-collection at the GitHub remote
 - Cloudflare workers as CDN
-- Respect Git semantics: tags are static, branches are dynamic
+  - Respects request cache-control headers such as no-cache (i.e. serve fresh) and max-age (i.e. serve data with age <= this)
+  - Takes github read access tokens via authorization header. This keeps abusers at bay, if false tokens provided, request-ip gets blacklisted
+  - Caches two things, branch => commit for n-minutes, commit => data or other CDN link to redirect, for eternity
+- Respect Git semantics: tags are static, branches are dynamic. So branches should point to dynamic data, not tags, even though tags are attractive in that they can point to blobs holding data. Branch named `UUID`, corresponding to a key, points to the commit holding value for that key in root-blob at `./value.txt`.
 - Different write strategies to accomodate the tradeoff between number of rate-limited REST-API calls and latencies, as well as different permissions:
   - Write directly; least latency; permission required: Contents (write)
   - Write using workflow; slightly greater latency; permission required: Actions
