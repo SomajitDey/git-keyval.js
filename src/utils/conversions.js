@@ -2,6 +2,21 @@
 
 import { fromUint8Array as base64encode, toUint8Array as base64decode } from 'js-base64';
 
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+// Params: txt <string>
+// Returns: bytesArray <Uint8Array>
+export function textToBytes (txt) {
+  return textEncoder.encode(txt);
+}
+
+// Params: bytesArray <Uint8Array>
+// Returns: txt <string>
+export function bytesToText (bytesArray) {
+  return textDecoder.decode(bytesArray);
+}
+
 // Params: bytesArray <Uint8Array>
 // Returns: hexString <string>
 export function bytesToHex (bytesArray) {
@@ -58,3 +73,7 @@ console.log(a, base64ToHex(a));
 const num = -3878790.56;
 const b = numTobase64(num);
 console.log(b, base64ToNum(b), num, Number.isSafeInteger(num));
+
+const bytes1 = textToBytes("Hi there");
+const bytes2 = textToBytes("Hello how do you do Pullinder and Pushkar?");
+console.log(bytes1, bytesToText(bytes1), bytesToText(bytes2));
