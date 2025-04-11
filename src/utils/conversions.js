@@ -49,7 +49,7 @@ export function base64ToHex (base64String) {
   return bytesToHex(base64decode(base64String));
 }
 
-// Compress any 64-bit number (float or int, signed or unsigned) to base64 string with <= 11 characters
+// Brief: Compress any 64-bit number (float or int, signed or unsigned) to base64 string with <= 11 characters
 // Params: num <number>. Accepts any number including signed integers and floats 
 // Returns: base64String <string>
 export function numTobase64 (num) {
@@ -59,7 +59,7 @@ export function numTobase64 (num) {
 
 // Params: base64String <string>
 // Returns: number <number>
-// Fidelity of conversion may be checked using Number.isSafeInteger() on the returned value
+// Remarks: Fidelity of conversion may be checked using Number.isSafeInteger() on the returned value
 // If returned value is not a safe integer it's guaranteed to be very close to the actual number
 // Ref: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/isSafeInteger#description
 export function base64ToNum (base64String) {
