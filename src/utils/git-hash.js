@@ -13,7 +13,7 @@ function mergeByteArrays (bytesLead, bytesTrail) {
   return merged;
 }
 
-export async function gitHash(bytesArray, type='blob', algo='SHA-1'){
+async function gitHash(bytesArray, type='blob', algo='SHA-1'){
   const headerBytes = textToBytes(`${type} ${bytesArray.length}\0`);
   const mergedBytesArray = mergeByteArrays(headerBytes, bytesArray);
   return hash(mergedBytesArray, algo);
@@ -84,9 +84,10 @@ export async function treeHash(entries) {
 function formatDate(date) {
   const seconds = Math.floor(date.getTime() / 1000);
   const offset = date.getTimezoneOffset();
+  const offsetAbs = Math.abs(offset);
   const offsetPrefix = (offset > 0) ? '-' : '+';
-  const offsetHrs = Math.floor(offset / 60).toString().padStart(2, '0');
-  const offsetMins = Math.floor(offset % 60).toString().padStart(2, '0');
+  const offsetHrs = Math.floor(offsetAbs / 60).toString().padStart(2, '0');
+  const offsetMins = Math.floor(offsetAbs % 60).toString().padStart(2, '0');
   return `${seconds} ${offsetPrefix}${offsetHrs}${offsetMins}`;
 }
 

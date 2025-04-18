@@ -1,0 +1,39 @@
+# Brief: This workflow initializes the upstream repository by pushing the empty blob
+## that will be updated by later writes.
+# Note: Must be run on the default branch
+
+name: Init
+
+on:
+  workflow_dispatch: # Enables manual triggering
+
+concurrency:
+  group: ${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+
+  init:
+    
+    permissions:
+      contents: write
+    
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Create orphan commit with empty blob and push to upstream tag 'empty'
+        env:
+          GIT_AUTHOR_NAME: 'a a' # Repeats letter for compression
+          GIT_AUTHOR_EMAIL: 'a@a.a' # Repeats letter in name for compression
+          GIT_AUTHOR_DATE: '1735689600 +0000' # 2025-01-01T00:00:00.000Z
+          GIT_COMMITTER_NAME: 'a a' # Repeats author name for compression
+          GIT_COMMITTER_EMAIL: 'a@a.a' # Repeats author email for compression
+          GIT_COMMITTER_DATE: '1735689600 +0000' # Repeats author date for compression
+        run: |
+          git init
+          touch value
+          git add value
+          git commit -m 'Empty value'
+          git remote add origin \
+            "https://${GITHUB_REPOSITORY_OWNER}:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}"
+          git push --force origin +HEAD:refs/tags/empty
