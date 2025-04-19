@@ -92,7 +92,7 @@ function formatPerson ({ name, email, date }) {
 }
 
 // author | committer schema: { name, email, date }
-export async function commitHash ({ treeHash, parentCommitHashes, message, author, committer }) {
+export async function commitHash ({ treeHash, parentCommitHashes = [], message, author, committer }) {
   let commitContent;
   commitContent = parentCommitHashes.reduce((accumulator, parentCommitHash) => {
     return `${accumulator}\nparent ${parentCommitHash}`;

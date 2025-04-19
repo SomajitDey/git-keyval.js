@@ -42,7 +42,21 @@ repository.init = async function ({ owner, repo, auth }) {
   `)
     .then((data) => data.repository.id);
 
+  // Blob SHA corresponding to the 'empty' tag as prepped by the init workflow
   repository.emptyBlob = await git.blobHash('');
+
+  // Tree SHA corresponding to the 'empty' tag
+  repository.emptyTree = await git.treeHash({
+    value: { type: 'blob', hash: repository.emptyBlob }
+  });
+
+  // Commit SHA corresponding to the 'empty' tag
+  repository.emptyCommit = await git.commitHash({
+    treeHash: repository.emptyTree,
+    committer: repository.committer,
+    author: repository.author,
+    message: 'Empty value'
+  });
 
   repository.id = await pending;
 };
