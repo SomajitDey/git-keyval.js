@@ -1,6 +1,12 @@
 // Semantics: Bytes <Uint8Array>, Base64 <Base64-URL>
 
-import { fromUint8Array as base64encode, toUint8Array as base64decode } from 'js-base64';
+import { fromUint8Array, toUint8Array as base64ToBytes } from 'js-base64';
+
+export { base64ToBytes };
+
+export function bytesToBase64 (bytes) {
+  return fromUint8Array(bytes, true);
+}
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -40,20 +46,20 @@ export function hexToBytes (hexString) {
 // Params: hexString <string>
 // Returns: base64String <string>
 export function hexToBase64 (hexString) {
-  return base64encode(hexToBytes(hexString), true);
+  return bytesToBase64(hexToBytes(hexString));
 }
 
 // Params: base64String <string>
 // Returns: hexString <string>
 export function base64ToHex (base64String) {
-  return bytesToHex(base64decode(base64String));
+  return bytesToHex(base64ToBytes(base64String));
 }
 
 // Brief: Compress any 64-bit number (float or int, signed or unsigned) to base64 string with <= 11 characters
 // Params: num <number>. Accepts any number including signed integers and floats 
 // Returns: base64String <string>
-export function numTobase64 (num) {
-  return base64encode(new Uint8Array(new Float64Array([num]).buffer), true)
+export function numToBase64 (num) {
+  return bytesToBase64(new Uint8Array(new Float64Array([num]).buffer))
     .replace(/^A*/,'');
 }
 
@@ -63,17 +69,6 @@ export function numTobase64 (num) {
 // If returned value is not a safe integer it's guaranteed to be very close to the actual number
 // Ref: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/isSafeInteger#description
 export function base64ToNum (base64String) {
-  return new Float64Array(base64decode(base64String.padStart(11,'A')).buffer)[0];
+  return new Float64Array(base64ToBytes(base64String.padStart(11,'A')).buffer)[0];
 }
 
-// Tests
-const a = hexToBase64('1970692b4ca5dfe67e073d1f88887cc7d642810e');
-console.log(a, base64ToHex(a));
-
-const num = -3878790.56;
-const b = numTobase64(num);
-console.log(b, base64ToNum(b), num, Number.isSafeInteger(num));
-
-const bytes1 = textToBytes("Hi there");
-const bytes2 = textToBytes("Hello how do you do Pullinder and Pushkar?");
-console.log(bytes1, bytesToText(bytes1), bytesToText(bytes2));

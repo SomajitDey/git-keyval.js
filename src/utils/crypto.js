@@ -6,7 +6,3 @@ export async function hash(input, algo='SHA-256'){
     return crypto.subtle.digest(algo, bytesArray)
       .then((buffer) => bytesToHex(new Uint8Array(buffer)));
 }
-
-// Tests
-const txt = 'Hi there';
-console.log(txt, await hash(txt, 'SHA-1'));
