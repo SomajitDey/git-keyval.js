@@ -1,10 +1,14 @@
-// Semantics: Bytes <Uint8Array>, Base64 <Base64-URL>
+// Semantics: Bytes <Uint8Array>
 
 import { fromUint8Array, toUint8Array as base64ToBytes } from 'js-base64';
 
 export { base64ToBytes };
 
 export function bytesToBase64 (bytes) {
+  return fromUint8Array(bytes);
+}
+
+export function bytesToBase64Url (bytes) {
   return fromUint8Array(bytes, true);
 }
 
@@ -49,6 +53,12 @@ export function hexToBase64 (hexString) {
   return bytesToBase64(hexToBytes(hexString));
 }
 
+// Params: hexString <string>
+// Returns: base64UrlString <string>
+export function hexToBase64Url (hexString) {
+  return bytesToBase64Url(hexToBytes(hexString));
+}
+
 // Params: base64String <string>
 // Returns: hexString <string>
 export function base64ToHex (base64String) {
@@ -60,6 +70,14 @@ export function base64ToHex (base64String) {
 // Returns: base64String <string>
 export function numToBase64 (num) {
   return bytesToBase64(new Uint8Array(new Float64Array([num]).buffer))
+    .replace(/^A*/, '');
+}
+
+// Brief: Compress any 64-bit number (float or int, signed or unsigned) to base64 string with <= 11 characters
+// Params: num <number>. Accepts any number including signed integers and floats
+// Returns: base64UrlString <string>
+export function numToBase64Url (num) {
+  return bytesToBase64Url(new Uint8Array(new Float64Array([num]).buffer))
     .replace(/^A*/, '');
 }
 

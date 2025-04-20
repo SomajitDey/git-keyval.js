@@ -14,7 +14,7 @@ const repository = {
 
 repository.author = repository.committer;
 
-// Brief: Repository info
+// Brief: Decorate `repository` with properties and methods
 repository.init = async function ({ owner, repo, auth }) {
   repository.owner = owner;
   repository.name = repo;
@@ -39,8 +39,7 @@ repository.init = async function ({ owner, repo, auth }) {
         }
       }
     }
-  `)
-    .then((data) => data.repository.id);
+  `).then((data) => data.repository.id);
 
   // Blob SHA corresponding to the 'empty' tag as prepped by the init workflow
   repository.emptyBlob = await git.blobHash('');
@@ -63,19 +62,20 @@ repository.init = async function ({ owner, repo, auth }) {
 
 // Brief: Update empty ./value file in given branch with given bytes
 // Params: bytes <Uint8Array>
+// Returns: hex <string> commit sha
 repository.commitBlob = async function ({ bytes, branch }) {
-  repository.request('PUT /repos/{owner}/{repo}/contents/{path}', {
+  return repository.request('PUT /repos/{owner}/{repo}/contents/{path}', {
     branch,
     path: 'value',
     message: 'set value',
     committer,
     content: bytesToBase64(bytes),
     sha: repository.emptyBlob
-  });
+  }).then((response) => response.commit.sha);
 };
 
 repository.updateRefs = async function ({ refUpdates }) {
-  repository.graphql(`
+  return repository.graphql(`
     mutation {
       updateRefs(input: ${{ repositoryId: repository.id, refUpdates }}) {
       }
