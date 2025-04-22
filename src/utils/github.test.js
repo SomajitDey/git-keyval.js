@@ -40,12 +40,13 @@ describe('Testing utils/github', () => {
     it('fetchCommitContent', async function () {
       this.timeout(15000);
       const hash = await repository.bytesToCommitHash(bytes);
+      //console.log('commit sha:', hash);
       assert.deepStrictEqual(await repository.fetchCommitContent(hash), bytes);
     });
   });
   
   describe('updateRefs and branchToCommitHash', () => {
-    const commitHash = '0bf3540978fa93b8efbc0f49244cec629d26835a';
+    const commitHash = '204164a8b96d0e16859dea421144e09c9b2ec8f2';
     const branch = 'test-target-' + commitHash;
     it('Point branch to commit then retrieve commit from branch', async function () {
       this.timeout(15000);

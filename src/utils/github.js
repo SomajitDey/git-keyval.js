@@ -70,13 +70,14 @@ repository.init = async function ({ owner, repo, auth }) {
 repository.bytesToCommitHash = async function (bytes) {
   const blobHash = await git.blobHash(bytes);
   const treeHash = await git.treeHash({
-    value: { type: 'blob', hash: blobHash }
+    'value': { type: 'blob', hash: blobHash },
+    'value.txt': { type: 'blob', hash: blobHash },
+    'value.json': { type: 'blob', hash: blobHash }
   });
   return git.commitHash({
     treeHash,
     committer: repository.committer,
     author: repository.author,
-    message: 'Set value'
   });
 };
 
@@ -110,15 +111,29 @@ repository.commitBytes = async function (bytes) {
   }).then((response) => response.data.sha);
 
   const treeHash = await repository.request('POST /repos/{owner}/{repo}/git/trees', {
-    tree: [{
+    tree: [
+    {
       path: 'value',
       type: 'blob',
       mode: '100644',
       sha: blobHash
-    }]
+    },
+    {
+      path: 'value.txt',
+      type: 'blob',
+      mode: '100644',
+      sha: blobHash
+    },
+    {
+      path: 'value.json',
+      type: 'blob',
+      mode: '100644',
+      sha: blobHash
+    }
+    ]
   }).then((response) => response.data.sha);
   return await repository.request('POST /repos/{owner}/{repo}/git/commits', {
-    message: 'Set value\n',
+    message: '',
     tree: treeHash,
     author: repository.author,
     committer: repository.committer
