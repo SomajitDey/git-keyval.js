@@ -19,8 +19,10 @@ async function gitHash (bytesArray, type = 'blob', algo = 'SHA-1') {
   return hash(mergedBytesArray, algo);
 }
 
-export async function blobHash (txtContent) {
-  return gitHash(textToBytes(txtContent));
+// Params: input <string> or <Uint8Array>
+export async function blobHash (input) {
+  const bytesArray = typeof input === 'string' ? textToBytes(input) : input;
+  return gitHash(bytesArray);
 }
 
 // Ref: https://github.com/creationix/js-git/blob/master/lib/modes.js

@@ -11,7 +11,7 @@ const repository = {
     // Name and email uses the same letter(s) for better compression
     name: 'a a',
     email: 'a@a.a',
-    date: '2025-01-01T00:00:00.000Z'
+    date: '2025-01-01T00:00:00Z'
   }
 };
 
@@ -66,22 +66,48 @@ repository.init = async function ({ owner, repo, auth }) {
   repository.id = await pending;
 };
 
-// Brief: Update empty ./value file in given branch with given bytes
-// Params: bytes <Uint8Array>, branch <string>
-// Returns: hex <string> commit sha
+// Brief: Computes the hash of an orphan or root commit that contains the given bytes at ./value
+repository.bytesToCommitHash = async function (bytes) {
+  const blobHash = await git.blobHash(bytes);
+  const treeHash = await git.treeHash({
+    value: { type: 'blob', hash: blobHash }
+  });
+  return git.commitHash({
+    treeHash,
+    committer: repository.committer,
+    author: repository.author,
+    message: 'Set value'
+  });
+}
+
+// Brief: Update empty ./value file in a temporary branch with given bytes. The temporary branch,
+//  returned as branch, should be deleted afterwards by the caller using updateRefs()
+// Params: bytes <Uint8Array>
+// Returns: { hash: hex <string>, branch: temp-uuid <string> }
 // Ref: https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#create-or-update-file-contents
-repository.commitBlob = async function ({ bytes, branch }) {
-  return repository.request('PUT /repos/{owner}/{repo}/contents/{path}', {
-    branch,
-    path: 'value',
-    message: 'Set value',
-    committer,
+repository.commitBytes = async function (bytes) {
+  const blobHash = await repository.request('POST /repos/{owner}/{repo}/git/blobs', {
     content: bytesToBase64(bytes),
-    sha: repository.emptyBlob
-  }).then((response) => response.commit.sha);
+    encoding: 'base64'
+  }).then((response) => response.data.sha);
+
+  const treeHash = await repository.request('POST /repos/{owner}/{repo}/git/trees', {
+    tree: [{
+      path: 'value',
+      type: 'blob',
+      mode: '100644',
+      sha: blobHash
+    }]
+  }).then((response) => response.data.sha);
+  return repository.request('POST /repos/{owner}/{repo}/git/commits', {
+    message: 'Set value\n',
+    tree: treeHash,
+    author: repository.author,
+    committer: repository.committer
+  }).then((response) => response.data.sha);
 };
 
-// Params: refUpdates <Array of <refUpdate>>
+// Params: refUpdates <[<refUpdate>]>;  [] means array
 // Each <refUpdate> is an object, ! means required:
 //  { beforeOid: hex <string>, afterOid: hex <string> | 'empty' | 0, name: <string>! }
 // Ref: https://docs.github.com/en/graphql/reference/mutations#updaterefs
@@ -116,5 +142,37 @@ repository.updateRefs = async function ([...refUpdates]) {
     refUpdates
   });
 };
+
+// Brief: Fetch bytes content for the given commit, from a CDN. Tries multiple CDNs as fail-safe.
+// Params: commitHash <string>
+// Returns: bytes <Uint8Array> | undefined (if fails)
+repository.fetchBytes = async function (commitHash) {
+  const { owner: user, name: repo } = repository;
+  const cdnURLs = [
+    `https://cdn.jsdelivr.net/gh/${user}/${repo}@${commitHash}`,
+    `https://cdn.statically.io/gh/${user}/${repo}/${commitHash}`,
+    `https://rawcdn.githack.com/${user}/${repo}/${commitHash}`,
+    `https://raw.githubusercontents.com/${user}/${repo}/${commitHash}`
+  ]
+  const path = '/value';
+  for (const cdnURL of cdnURLs) {
+    try {
+      const bytes = await fetch(cdnURL + path, { redirect: 'follow' })
+        .then((response) => {
+          if (!response.ok) throw new Error (response.status);
+          return response.bytes();
+        });
+      return bytes; // Error handler below is designed to skip this step in case of error
+    } catch (err) {
+      if (err.message == 404) {
+        // If 404 for one CDN, no use trying other CDNs as commit might not exist in GitHub origin
+        throw new Error ('Commit not found');
+        return;
+      } else {
+        continue; // Try other CDNs in case current CDN is down
+      }
+    }
+  }
+}
 
 export default repository;
