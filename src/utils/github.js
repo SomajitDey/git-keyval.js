@@ -26,7 +26,7 @@ repository.init = async function ({ owner, repo, auth }) {
     owner,
     repo,
     headers: {
-      Authorization: `Bearer ${auth}`,
+      Authorization: auth ? `Bearer ${auth}` : auth,
       'X-GitHub-Api-Version': '2022-11-28'
     }
   });
@@ -160,6 +160,21 @@ repository.updateRefs = async function ([...refUpdates]) {
     refUpdates
   });
 };
+
+// Brief: Fetch target commit hash for given branch
+// Params: branch <string>
+// Returns: hex <string>
+// Note: Can be used unauthenticated
+repository.branchToCommitHash = async function (branch) {
+  return repository.request('GET /repos/{owner}/{repo}/git/ref/{ref}', {
+    ref: `heads/${branch}`
+  })
+  .then((response) => response.data.object.sha)
+  .catch((err) => {
+    if (err.status == 404) return;
+    throw err;
+  });
+}
 
 // Brief: Fetch bytes content for the given commit, from a CDN. Tries multiple CDNs as fail-safe.
 // Params: commitHash <string>

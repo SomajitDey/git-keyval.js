@@ -43,4 +43,20 @@ describe('Testing utils/github', () => {
       assert.deepStrictEqual(await repository.fetchCommitContent(hash), bytes);
     });
   });
+  
+  describe('updateRefs and branchToCommitHash', () => {
+    const commitHash = '0bf3540978fa93b8efbc0f49244cec629d26835a';
+    const branch = 'test-target-' + commitHash;
+    it('Point branch to commit then retrieve commit from branch', async function () {
+      this.timeout(15000);
+      await repository.updateRefs([{ afterOid: commitHash, name: branch }]);
+      assert.equal(await repository.branchToCommitHash(branch), commitHash);
+    })
+
+    it('Delete branch', async function () {
+      this.timeout(15000);
+      await repository.updateRefs([{ name: branch }]);      
+      assert.equal(await repository.branchToCommitHash(branch), undefined);
+    })
+  })
 });
