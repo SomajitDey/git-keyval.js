@@ -78,14 +78,32 @@ repository.bytesToCommitHash = async function (bytes) {
     author: repository.author,
     message: 'Set value'
   });
-}
+};
 
-// Brief: Update empty ./value file in a temporary branch with given bytes. The temporary branch,
-//  returned as branch, should be deleted afterwards by the caller using updateRefs()
+// Brief: Put provided bytes in ./value path of a predictable, root commit
 // Params: bytes <Uint8Array>
-// Returns: { hash: hex <string>, branch: temp-uuid <string> }
+// Returns: hex <string> commit hash
 // Ref: https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#create-or-update-file-contents
 repository.commitBytes = async function (bytes) {
+  // First, check if the desired commit already exists using an unauthenticated request to GitHub REST API
+  const { owner, name: repo, bytesToCommitHash } = repository;
+  const commitHash = await bytesToCommitHash(bytes);
+  const exists = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/commits/${commitHash}`, {
+    method: 'HEAD'
+  }).then((response) => {
+    const statusCode = response.status;
+    if (response.ok) {
+      return true;
+    } else if (statusCode == 404) {
+      return false;
+    } else {
+      throw new Error(`GitHub API network error: ${statusCode}`);
+    }
+  });
+
+  if (exists) return commitHash; // Hooray!
+
+  // Undertake the expensive process of commit creation using authenticated GitHub API requests
   const blobHash = await repository.request('POST /repos/{owner}/{repo}/git/blobs', {
     content: bytesToBase64(bytes),
     encoding: 'base64'
@@ -99,7 +117,7 @@ repository.commitBytes = async function (bytes) {
       sha: blobHash
     }]
   }).then((response) => response.data.sha);
-  return repository.request('POST /repos/{owner}/{repo}/git/commits', {
+  return await repository.request('POST /repos/{owner}/{repo}/git/commits', {
     message: 'Set value\n',
     tree: treeHash,
     author: repository.author,
@@ -117,11 +135,11 @@ repository.updateRefs = async function ([...refUpdates]) {
 
     // If afterOid is falsy (undefined, null, false, or 0), format ref for deletion
     // If afterOid includes the string `empty`, format ref to point to the 'empty' tag
-    if (! afterOid) {
+    if (!afterOid) {
       refUpdate.afterOid = '0000000000000000000000000000000000000000';
     } else if (afterOid.toLowerCase().includes('empty')) {
       refUpdate.afterOid = repository.emptyCommit;
-    };
+    }
 
     // If name is not a fully qualified name, format ref as branch
     if (!name.startsWith('refs/')) refUpdate.name = `refs/heads/${name}`;
@@ -146,33 +164,32 @@ repository.updateRefs = async function ([...refUpdates]) {
 // Brief: Fetch bytes content for the given commit, from a CDN. Tries multiple CDNs as fail-safe.
 // Params: commitHash <string>
 // Returns: bytes <Uint8Array> | undefined (if fails)
-repository.fetchBytes = async function (commitHash) {
+repository.fetchCommitContent = async function (commitHash) {
   const { owner: user, name: repo } = repository;
   const cdnURLs = [
     `https://cdn.jsdelivr.net/gh/${user}/${repo}@${commitHash}`,
     `https://cdn.statically.io/gh/${user}/${repo}/${commitHash}`,
     `https://rawcdn.githack.com/${user}/${repo}/${commitHash}`,
     `https://raw.githubusercontents.com/${user}/${repo}/${commitHash}`
-  ]
+  ];
   const path = '/value';
   for (const cdnURL of cdnURLs) {
     try {
       const bytes = await fetch(cdnURL + path, { redirect: 'follow' })
         .then((response) => {
-          if (!response.ok) throw new Error (response.status);
+          if (!response.ok) throw new Error(response.status);
           return response.bytes();
         });
       return bytes; // Error handler below is designed to skip this step in case of error
     } catch (err) {
       if (err.message == 404) {
         // If 404 for one CDN, no use trying other CDNs as commit might not exist in GitHub origin
-        throw new Error ('Commit not found');
-        return;
+        throw new Error('Commit not found');
       } else {
         continue; // Try other CDNs in case current CDN is down
       }
     }
   }
-}
+};
 
 export default repository;

@@ -26,21 +26,21 @@ describe('Testing utils/github', () => {
       assert.equal(repository.emptyCommit, '3319b4a12fac5b964ca2a122d1b19797f212efaf');
     });
   });
-  
+
   describe('updateRefs, commitBytes, bytesToCommitHash and fetchBytes', () => {
-    const bytes = textToBytes('Hello World');
-    
+    const bytes = textToBytes('Hello World!');
+
     it('commitBytes hash agree with bytesToCommitHash', async function () {
       // Increase from Mocha's default 2000ms timeout
       this.timeout(15000); // Not using arrow function as 2nd arg of `it` so we can use `this`
       const hash = await repository.commitBytes(bytes);
       assert.equal(await repository.bytesToCommitHash(bytes), hash);
-    })
-    
+    });
+
     it('fetchBytes', async function () {
       this.timeout(15000);
       const hash = await repository.bytesToCommitHash(bytes);
-      assert.deepStrictEqual(await repository.fetchBytes(hash), bytes);
-    })
+      assert.deepStrictEqual(await repository.fetchCommitContent(hash), bytes);
+    });
   });
 });
