@@ -80,7 +80,7 @@ repository.bytesToCommitHash = async function (bytes) {
   });
 };
 
-// Brief: Put provided bytes in ./value path of a predictable, root commit
+// Brief: Put provided bytes in ./value path of a deduplicated commit
 // Params: bytes <Uint8Array>
 // Returns: hex <string> commit hash
 // Ref: https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#create-or-update-file-contents

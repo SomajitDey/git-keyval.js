@@ -27,7 +27,7 @@ describe('Testing utils/github', () => {
     });
   });
 
-  describe('updateRefs, commitBytes, bytesToCommitHash and fetchBytes', () => {
+  describe('commitBytes, bytesToCommitHash and fetchCommitContent', () => {
     const bytes = textToBytes('Hello World!');
 
     it('commitBytes hash agree with bytesToCommitHash', async function () {
@@ -37,7 +37,7 @@ describe('Testing utils/github', () => {
       assert.equal(await repository.bytesToCommitHash(bytes), hash);
     });
 
-    it('fetchBytes', async function () {
+    it('fetchCommitContent', async function () {
       this.timeout(15000);
       const hash = await repository.bytesToCommitHash(bytes);
       assert.deepStrictEqual(await repository.fetchCommitContent(hash), bytes);
