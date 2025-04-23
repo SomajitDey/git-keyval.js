@@ -176,9 +176,9 @@ repository.updateRefs = async function ([...refUpdates]) {
   });
 };
 
-// Brief: Fetch target commit hash for given branch
+// Brief: Fetch target commit hash for given branch. Returns undefined, if branch doesn't exist.
 // Params: branch <string>
-// Returns: hex <string>
+// Returns: hex <string> | <undefined>
 // Note: Can be used unauthenticated
 repository.branchToCommitHash = async function (branch) {
   return repository.request('GET /repos/{owner}/{repo}/git/ref/{ref}', {
