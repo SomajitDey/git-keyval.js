@@ -30,15 +30,12 @@ describe('Testing utils/github', () => {
   describe('commitBytes, bytesToCommitHash and fetchCommitContent', () => {
     const bytes = textToBytes('Hello World!');
 
-    it('commitBytes hash agree with bytesToCommitHash', async function () {
-      // Increase from Mocha's default 2000ms timeout
-      this.timeout(15000); // Not using arrow function as 2nd arg of `it` so we can use `this`
+    it('commitBytes hash agree with bytesToCommitHash', async () => {
       const hash = await repository.commitBytes(bytes);
       assert.equal(await repository.bytesToCommitHash(bytes), hash);
     });
 
-    it('fetchCommitContent', async function () {
-      this.timeout(15000);
+    it('fetchCommitContent', async () => {
       const hash = await repository.bytesToCommitHash(bytes);
       //console.log('commit sha:', hash);
       assert.deepStrictEqual(await repository.fetchCommitContent(hash), bytes);
@@ -48,14 +45,12 @@ describe('Testing utils/github', () => {
   describe('updateRefs and branchToCommitHash', () => {
     const commitHash = '204164a8b96d0e16859dea421144e09c9b2ec8f2';
     const branch = 'test-target-' + commitHash;
-    it('Point branch to commit then retrieve commit from branch', async function () {
-      this.timeout(15000);
+    it('Point branch to commit then retrieve commit from branch', async () => {
       await repository.updateRefs([{ afterOid: commitHash, name: branch }]);
       assert.equal(await repository.branchToCommitHash(branch), commitHash);
     })
 
-    it('Delete branch', async function () {
-      this.timeout(15000);
+    it('Delete branch', async () => {
       await repository.updateRefs([{ name: branch }]);      
       assert.equal(await repository.branchToCommitHash(branch), undefined);
     })
