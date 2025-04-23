@@ -47,6 +47,11 @@ describe('Testing utils/conversions', () => {
     assert.equal(conversions.base64ToHex(conversions.hexToBase64Url(hex)), hex);
   });
 
+  it('numToBytes and bytesToNum', () => {
+    const num = -3878790.56;
+    assert.equal(conversions.bytesToNum(conversions.numToBytes(num)), num);
+  });
+
   it('numToBase64 and base64ToNum', () => {
     const num = -3878790.56;
     assert.equal(conversions.base64ToNum(conversions.numToBase64(num)), num);
