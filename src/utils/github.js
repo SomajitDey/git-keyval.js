@@ -26,7 +26,7 @@ repository.init = async function ({ owner, repo, auth }) {
     owner,
     repo,
     headers: {
-      Authorization: auth ? `Bearer ${auth}` : auth,
+      Authorization: auth ? `Bearer ${auth}` : undefined,
       'X-GitHub-Api-Version': '2022-11-28'
     }
   });
@@ -34,18 +34,8 @@ repository.init = async function ({ owner, repo, auth }) {
   repository.graphql = withCustomRequest(repository.request);
 
   // The following network call, being the slowest, is not awaited immediately
-  const pending = repository.graphql(`
-    query($owner: String!, $repo: String!) {
-      repository(followRenames: true, owner: $owner, name: $repo) {
-        ... on Node {
-          id
-        }
-      }
-    }
-  `, {
-    owner,
-    repo
-  }).then((data) => data.repository.id);
+  const pending = repository.request('GET /repos/{owner}/{repo}')
+    .then((response) => response.data.node_id);
 
   // Blob SHA corresponding to the 'empty' tag as prepped by the init workflow
   repository.emptyBlob = await git.blobHash('');

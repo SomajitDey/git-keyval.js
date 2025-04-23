@@ -28,7 +28,7 @@ describe('Testing utils/github', () => {
   });
 
   describe('commitBytes, bytesToCommitHash and fetchCommitContent', () => {
-    const bytes = textToBytes('Hello World!');
+    const bytes = textToBytes(JSON.stringify({ Hello: 'World!'}));
 
     it('commitBytes hash agree with bytesToCommitHash', async () => {
       const hash = await repository.commitBytes(bytes);
@@ -43,7 +43,7 @@ describe('Testing utils/github', () => {
   });
   
   describe('updateRefs and branchToCommitHash', () => {
-    const commitHash = '204164a8b96d0e16859dea421144e09c9b2ec8f2';
+    const commitHash = '16f951c4f2e683da2891f78358b6cda51e7492a0';
     const branch = 'test-target-' + commitHash;
     it('Point branch to commit then retrieve commit from branch', async () => {
       await repository.updateRefs([{ afterOid: commitHash, name: branch }]);
