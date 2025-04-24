@@ -1,5 +1,5 @@
 import * as conversions from './utils/conversions.js';
-import repository from './utils/github.js';
+import repository from './github.js';
 
 // Brief: Return the type of input
 // Params: Any javascript value!

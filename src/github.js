@@ -3,8 +3,8 @@
 
 import { request } from '@octokit/request';
 import { withCustomRequest } from '@octokit/graphql';
-import * as git from './git-hash.js';
-import { bytesToBase64 } from './conversions.js';
+import * as git from './utils/git-hash.js';
+import { bytesToBase64 } from './utils/conversions.js';
 
 const repository = {
   committer: {
