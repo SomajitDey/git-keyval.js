@@ -44,7 +44,7 @@ describe('Testing utils/github', () => {
   
   describe('updateRefs and branchToCommitHash', () => {
     const commitHash = '16f951c4f2e683da2891f78358b6cda51e7492a0';
-    const branch = 'test-target-' + commitHash;
+    const branch = 'test/target/' + commitHash;
     it('Point branch to commit then retrieve commit from branch', async () => {
       await repository.updateRefs([{ afterOid: commitHash, name: branch }]);
       assert.equal(await repository.branchToCommitHash(branch), commitHash);
