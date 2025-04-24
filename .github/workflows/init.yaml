@@ -1,5 +1,4 @@
-# Brief: This workflow initializes the upstream repository by pushing the empty blob
-## that will be updated by later writes.
+# Brief: This workflow initializes the upstream repository by pushing the type commits
 # Note: Must be run on the default branch
 
 name: Init
@@ -21,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Create orphan commit with empty blob and push to upstream tag 'empty'
+      - name: Create root commits for all the supported types, and tag them as such
         env:
           GIT_AUTHOR_NAME: 'a a' # Repeats letter for compression
           GIT_AUTHOR_EMAIL: 'a@a.a' # Repeats letter in name for compression
@@ -32,8 +31,16 @@ jobs:
         run: |
           git init
           touch value
-          git add value
-          git commit -m 'Empty value'
+          ln value value.txt
+          ln value value.json
+          refspec=''
+          for type in 'Number' 'Boolean' 'String' 'JSON'; do
+            git checkout --orphan="${type}"
+            echo -n "${type}" > value
+            git add value*
+            git commit --allow-empty-message -m ''
+            refspec+="+refs/heads/${type}:refs/tags/${type} "
+          done
           git remote add origin \
             "https://${GITHUB_REPOSITORY_OWNER}:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}"
-          git push --force origin +HEAD:refs/tags/empty
+          git push --force origin ${refspec}
