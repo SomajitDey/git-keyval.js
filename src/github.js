@@ -35,41 +35,41 @@ repository.init = async function ({ owner, repo, auth, secret }) {
 
   repository.graphql = withCustomRequest(repository.request);
 
-  // The following network call, being the slowest, is not awaited immediately
-  const pending = repository.request('GET /repos/{owner}/{repo}')
-    .then((response) => response.data.node_id);
+  // Using REST API instead of GraphQL to support unauthenticated reads
+  const [{ node_id, visibility, created_at }] = await Promise.all([
+    repository.request('GET /repos/{owner}/{repo}')
+      .then((response) => response.data),
+    repository.request('GET /repos/{owner}/{repo}/git/ref/{ref}', {
+      ref: 'tags/kv/types/JSON'
+    })
+      .then((response) => {
+        if (
+          response.data.object.sha !== 'f8f3eae1d21b150f5d020b65afd1cb6c07f11ab1'
+        ) throw new Error('Mismatched');
+      })
+      .catch((err) => {
+        if (err.status == 404 || err.message === 'Mismatched') { throw new Error('Run init workflow in the GitHub repo first!'); }
+        throw err;
+      })
+  ]);
 
-  // Blob SHA corresponding to the 'empty' tag as prepped by the init workflow
-  repository.emptyBlob = await git.blobHash('');
-
-  // Tree SHA corresponding to the 'empty' tag
-  repository.emptyTree = await git.treeHash({
-    value: { type: 'blob', hash: repository.emptyBlob }
-  });
-
-  // Commit SHA corresponding to the 'empty' tag
-  repository.emptyCommit = await git.commitHash({
-    treeHash: repository.emptyTree,
-    committer: repository.committer,
-    author: repository.author,
-    message: 'Empty value'
-  });
-
-  repository.id = await pending;
+  repository.id = node_id;
+  repository.isPublic = visibility === 'public';
+  repository.created = new Date(created_at).getTime();
 };
 
 // Brief: Computes the hash of an orphan or root commit that contains the given bytes at ./value
 repository.bytesToCommitHash = async function (bytes) {
   const blobHash = await git.blobHash(bytes);
   const treeHash = await git.treeHash({
-    'value': { type: 'blob', hash: blobHash },
+    value: { type: 'blob', hash: blobHash },
     'value.txt': { type: 'blob', hash: blobHash },
     'value.json': { type: 'blob', hash: blobHash }
   });
   return git.commitHash({
     treeHash,
     committer: repository.committer,
-    author: repository.author,
+    author: repository.author
   });
 };
 
@@ -104,24 +104,24 @@ repository.commitBytes = async function (bytes) {
 
   const treeHash = await repository.request('POST /repos/{owner}/{repo}/git/trees', {
     tree: [
-    {
-      path: 'value',
-      type: 'blob',
-      mode: '100644',
-      sha: blobHash
-    },
-    {
-      path: 'value.txt',
-      type: 'blob',
-      mode: '100644',
-      sha: blobHash
-    },
-    {
-      path: 'value.json',
-      type: 'blob',
-      mode: '100644',
-      sha: blobHash
-    }
+      {
+        path: 'value',
+        type: 'blob',
+        mode: '100644',
+        sha: blobHash
+      },
+      {
+        path: 'value.txt',
+        type: 'blob',
+        mode: '100644',
+        sha: blobHash
+      },
+      {
+        path: 'value.json',
+        type: 'blob',
+        mode: '100644',
+        sha: blobHash
+      }
     ]
   }).then((response) => response.data.sha);
   return await repository.request('POST /repos/{owner}/{repo}/git/commits', {
@@ -176,12 +176,12 @@ repository.branchToCommitHash = async function (branch) {
   return repository.request('GET /repos/{owner}/{repo}/git/ref/{ref}', {
     ref: `heads/${branch}`
   })
-  .then((response) => response.data.object.sha)
-  .catch((err) => {
-    if (err.status == 404) return;
-    throw err;
-  });
-}
+    .then((response) => response.data.object.sha)
+    .catch((err) => {
+      if (err.status == 404) return;
+      throw err;
+    });
+};
 
 // Brief: Fetch bytes content for the given commit, from a CDN. Tries multiple CDNs as fail-safe.
 // Params: commitHash <string>

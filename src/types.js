@@ -4,7 +4,7 @@ import repository from './github.js';
 // Brief: Return the type of input
 // Params: Any javascript value!
 export function getType (input) {
-  return Object.prototype.toString.call(input).split(' ').pop().slice(0,-1);
+  return Object.prototype.toString.call(input).split(' ').pop().slice(0, -1);
 }
 
 // Brief: Convert typed input into bytes. Also doubles as type checker/validator.
@@ -15,10 +15,12 @@ export function typedToBytes (input) {
   const type = getType(input);
   switch (type) {
     case 'Number':
-      if (input.toString().length > 7) return {
-        type,
-        bytes: conversions.numToBytes(input)
-      };
+      if (input.toString().length > 7) {
+        return {
+          type,
+          bytes: conversions.numToBytes(input)
+        };
+      }
     case 'Boolean':
     case 'String':
       return { type, bytes: conversions.textToBytes(input.toString()) };
