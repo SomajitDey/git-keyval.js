@@ -3,21 +3,17 @@ import assert from 'assert';
 
 describe('Testing utils/conversions', () => {
   describe('bytesToBase64 and base64ToBytes', () => {
-    const base64 = 'AbC+'; // Must be n*8 bit, so we chose 4*6 = 3*8 bit
-    it('convert to and fro', () => {
+    it('convert to and fro, and number of bytes', () => {
+      const base64 = 'AbC+'; // Must be n*8 bit, so we chose 4*6 = 3*8 bit
       assert.equal(conversions.bytesToBase64(conversions.base64ToBytes(base64)), base64);
-    });
-    it('number of bytes', () => {
       assert.equal(conversions.base64ToBytes(base64).length, 3);
     });
   });
 
   describe('bytesToBase64Url and base64ToBytes', () => {
-    const base64 = 'AbC-'; // Must be n*8 bit, so we chose 4*6 = 3*8 bit
-    it('convert to and fro', () => {
+    it('convert to and fro, and number of bytes', () => {
+      const base64 = 'AbC-'; // Must be n*8 bit, so we chose 4*6 = 3*8 bit
       assert.equal(conversions.bytesToBase64Url(conversions.base64ToBytes(base64)), base64);
-    });
-    it('number of bytes', () => {
       assert.equal(conversions.base64ToBytes(base64).length, 3);
     });
   });
@@ -28,11 +24,9 @@ describe('Testing utils/conversions', () => {
   });
 
   describe('hexToBytes and bytesToHex', () => {
-    const hex = '1970692b4ca5dfe67e073d1f88887cc7d642810e';
-    it('convert to and fro', () => {
+    it('convert to and fro, and number of bytes', () => {
+      const hex = '1970692b4ca5dfe67e073d1f88887cc7d642810e';
       assert.equal(conversions.bytesToHex(conversions.hexToBytes(hex)), hex);
-    });
-    it('number of bytes', () => {
       assert.equal(conversions.hexToBytes(hex).length, hex.length / 2);
     });
   });
