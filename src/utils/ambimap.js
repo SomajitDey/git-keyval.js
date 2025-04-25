@@ -1,15 +1,20 @@
-// Brief: Instance of this to be used as .inv property of bidirectionalMap
-class invMap extends Map {
+// Brief: Extends native `Map` class with an `inv` field to contain the inverse map
+export default class bidirectionalMap extends Map {
   // Brief: To hold the Map object (key => val) the current instance (val => key) inverts
-  __inverseOf;
+  inv;
 
-  constructor (arg, inverseOf) {
-    super(arg);
-    if (inverseOf) this.__inverseOf = inverseOf;
-  }
-
-  isInverseOf (inverseOf) {
-    this.__inverseOf = inverseOf;
+  // Params: (required) iterable <same as taken by Map(), an iterable or Map instance>
+  // Params: inverseOf <bidirectionalMap>, for internal use only
+  constructor (iterable, inverseOf) {
+    super(iterable);
+    if (inverseOf) {
+      this.inv = inverseOf;
+    } else {
+      const invEntries = Array.from(this).map(([val, key]) => [key, val]);
+      this.inv = new bidirectionalMap(invEntries, this);
+      if (this.inv.size < invEntries.length) throw new Error('Breaking bijection');
+    }
+    if (this.size !== this.inv.size) throw new Error('Breaking bijection');
   }
 
   // Overriding Map.prototype.method() by method()
@@ -18,7 +23,7 @@ class invMap extends Map {
   // Brief: Delete key <=> val
   delete (val) {
     const key = this.get(val);
-    this.__inverseOf?.__delete(key);
+    this.inv?.__delete(key);
     return super.delete(val);
   }
 
@@ -29,25 +34,25 @@ class invMap extends Map {
 
   // Brief: Try setting key <=> val without breaking bijection
   set (val, key) {
-    if (this.__inverseOf?.has(key)) throw new Error('Breaking bijection');
+    if (this.inv?.has(key)) throw new Error('Breaking bijection');
     this.delete(val);
-    this.__inverseOf?.__set(key, val);
+    this.inv?.__set(key, val);
     return super.set(val, key);
   }
 
   // Brief: Regenerate inverseOf based on current/this
   regenInverseOf () {
-    this.__inverseOf.__clear();
+    this.inv.__clear();
     for (const [val, key] of this.entries()) {
-      this.__inverseOf.__set(key, val);
+      this.inv.__set(key, val);
     }
   }
 
   // Brief: Force set key <=> val by recreating inverseOf
   push (val, key) {
-    if (!this.__inverseOf?.has(key)) return this.set(val, key);
+    if (!this.inv?.has(key)) return this.set(val, key);
     // Delete the mapping that was breaking bijection
-    this.__delete(this.__inverseOf.get(key));
+    this.__delete(this.inv.get(key));
 
     this.__set(val, key);
     this.regenInverseOf();
@@ -60,28 +65,12 @@ class invMap extends Map {
 
   // Brief: Clear everything
   clear () {
-    this.__inverseOf?.__clear();
+    this.inv?.__clear();
     return super.clear();
   }
 
   // Brief: Doesn't clear inverseOf
   __clear () {
     return super.clear();
-  }
-}
-
-// Brief: Extends native `Map` class with an `inv` field to contain the inverse map
-// Params: arg <Same as in Map() constructor>
-export default class bidirectionalMap extends invMap {
-  inv;
-
-  constructor (arg) {
-    const entries = Array.from(arg);
-    const invEntries = Array.from(entries.map(([key, val]) => [val, key]));
-    super(entries);
-    this.inv = new invMap(invEntries, this);
-    super.isInverseOf(this.inv);
-
-    if (this.size + this.inv.size < entries.length + invEntries.length) { throw new Error('Breaking bijection'); }
   }
 }

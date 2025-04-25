@@ -8,6 +8,11 @@ const map = new Map([
 ]);
 
 describe('Testing bi-directional map', () => {
+  it('ambimap.inv.inv == ambimap', () => {
+    const biMap = new ambimap(map);
+    assert.deepStrictEqual(biMap.inv.inv, biMap);
+  });
+
   it('Iterating over all keys', () => {
     const biMap = new ambimap(map);
 
