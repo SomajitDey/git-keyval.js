@@ -18,9 +18,11 @@ const repository = {
 repository.author = repository.committer;
 
 // Brief: Decorate `repository` with properties and methods
-repository.init = async function ({ owner, repo, auth }) {
+repository.init = async function ({ owner, repo, auth, secret }) {
   repository.owner = owner;
   repository.name = repo;
+  repository.authenticated = Boolean(auth);
+  repository.encryptSecret = secret;
 
   repository.request = request.defaults({
     owner,

@@ -39,7 +39,7 @@ jobs:
             echo -n "${type}" > value
             git add value*
             git commit --allow-empty-message -m ''
-            refspec+="+refs/heads/${type}:refs/tags/${type} "
+            refspec+="+refs/heads/${type}:refs/tags/kv/types/${type} "
           done
           git remote add origin \
             "https://${GITHUB_REPOSITORY_OWNER}:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}"
