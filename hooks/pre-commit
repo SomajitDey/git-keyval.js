@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+echo -e '\nStep: Linting ...'
+npm run lint > /dev/null
+echo -e '... Done\n'
+
+echo -e '\nStep: Running tests ...'
+npm test || \
+    {
+        echo 'Test failed. Commit aborted'
+        exit 1
+    }
+echo -e '... Done\n'
