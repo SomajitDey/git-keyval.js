@@ -11,3 +11,7 @@ npm test || \
         exit 1
     }
 echo -e '... Done\n'
+
+echo -e '\nStep: Staging formatted (linted) files ...'
+git add .
+echo -e '... Done\n'

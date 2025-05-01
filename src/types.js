@@ -1,5 +1,14 @@
 import * as conversions from './utils/conversions.js';
-import repository from './github.js';
+import ambimap from './utils/ambimap.js';
+
+export const typesToCommitHash = new ambimap([
+  ['Number', '14f91166da82bb4c61d208ac02c492355e8d2cc2'],
+  ['Boolean', '6e3272db79ec82e0caee4729c2b7f7e90e1900d8'],
+  ['String', '297f8811f388d4789333d7f2377519c145c4f874'],
+  ['JSON', 'f8f3eae1d21b150f5d020b65afd1cb6c07f11ab1']
+]);
+
+export const commitHashToTypes = typesToCommitHash.inv;
 
 // Brief: Return the type of input
 // Params: Any javascript value!

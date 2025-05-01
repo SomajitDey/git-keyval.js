@@ -8,6 +8,7 @@ import { request } from '@octokit/request';
 import { withCustomRequest } from '@octokit/graphql';
 import * as git from './utils/git-hash.js';
 import { bytesToBase64 } from './utils/conversions.js';
+import { typesToCommitHash } from './types.js';
 
 export default class Repository {
   static committer = {
@@ -56,7 +57,7 @@ export default class Repository {
       })
         .then((response) => {
           if (
-            response.data.object.sha !== 'f8f3eae1d21b150f5d020b65afd1cb6c07f11ab1'
+            response.data.object.sha !== typesToCommitHash.get('JSON')
           ) throw new Error('Mismatched');
         })
         .catch((err) => {
