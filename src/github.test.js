@@ -1,12 +1,13 @@
 // Export your GitHub access-token as env var: GITHUB_PAT before running this script
 
-import repository from './github.js';
+import Repository from './github.js';
 import { textToBytes, bytesToText } from './utils/conversions.js';
 import assert from 'assert';
 import { config } from 'dotenv';
 
 config(); // Sourcing .env
-await repository.init({
+
+const repository = await Repository.instantiate({
   owner: process.env.GITHUB_OWNER,
   repo: process.env.GITHUB_REPO,
   auth: process.env.GITHUB_AUTH
