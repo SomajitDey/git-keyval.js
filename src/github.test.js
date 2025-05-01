@@ -6,7 +6,11 @@ import assert from 'assert';
 import { config } from 'dotenv';
 
 config(); // Sourcing .env
-await repository.init({ owner: 'SomajitDey', repo: 'git-keyval.js', auth: process.env.GITHUB_PAT });
+await repository.init({
+  owner: process.env.GITHUB_OWNER,
+  repo: process.env.GITHUB_REPO,
+  auth: process.env.GITHUB_AUTH
+});
 
 describe('Testing utils/github', () => {
   describe('init', () => {
