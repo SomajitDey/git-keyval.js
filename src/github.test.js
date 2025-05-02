@@ -32,11 +32,13 @@ describe('Testing utils/github', () => {
     });
   });
 
-  it('commitBytes, bytesToCommitHash, fetchCommitContent, updateRefs and branchToCommitHash', async () => {
+  it('commitBytes, bytesToCommitHash, fetchCommitContent, cdnLinks, updateRefs and branchToCommitHash', async () => {
     const bytes = textToBytes(JSON.stringify({ Hello: 'World!' }));
     const commitHash = await repository.commitBytes(bytes);
     assert.equal(await repository.bytesToCommitHash(bytes), commitHash);
     assert.deepStrictEqual(await repository.fetchCommitContent(commitHash), bytes);
+    const { 'octet-stream': cdnLinkBinary } = repository.cdnLinks(commitHash);
+    assert.deepStrictEqual(await fetch(cdnLinkBinary).then((res) => res.bytes()), bytes);
     const branch = 'test/target/' + commitHash;
     await repository.updateRefs([{ afterOid: commitHash, name: branch }]);
     assert.equal(await repository.branchToCommitHash(branch), commitHash);

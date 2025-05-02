@@ -7,10 +7,23 @@
 import { request } from '@octokit/request';
 import { withCustomRequest } from '@octokit/graphql';
 import * as git from './utils/git-hash.js';
-import { bytesToBase64 } from './utils/conversions.js';
+import { bytesToBase64, base64ToBytes } from './utils/conversions.js';
 import { typesToCommitHash } from './types.js';
 
 export default class Repository {
+  // Declaring properties to be initialized by constructor() or init()
+  committer;
+  author;
+  owner;
+  name;
+  authenticated;
+  encryptSecret;
+  request;
+  graphql;
+  id;
+  isPublic;
+  created;
+
   static committer = {
     // Name and email uses the same letter(s) for better compression
     name: 'a a',
@@ -146,7 +159,7 @@ export default class Repository {
 
   // Params: refUpdates <[<refUpdate>]>;  [] means array
   // Each <refUpdate> is an object, ! means required:
-  //  { beforeOid: hex <string>, afterOid: hex <string> | 'empty' | 0, name: <string>! }
+  //  { beforeOid: hex <string>, afterOid: hex <string> | 0, name: <string>! }
   // Ref: https://docs.github.com/en/graphql/reference/mutations#updaterefs
   async updateRefs ([...refUpdates]) {
     refUpdates.forEach((refUpdate) => {
@@ -191,10 +204,20 @@ export default class Repository {
       });
   }
 
-  // Brief: Fetch bytes content for the given commit, from a CDN. Tries multiple CDNs as fail-safe.
+  // Brief: Fetch bytes content for the given commit.
   // Params: commitHash <string>
   // Returns: bytes <Uint8Array> | undefined (if fails)
   async fetchCommitContent (commitHash) {
+    // For private repositories fetch from GitHub REST API
+    if (!this.isPublic) {
+      return this.request('GET /repos/{owner}/{repo}/contents/{path}', {
+        path: 'value',
+        ref: commitHash
+      })
+        .then((response) => base64ToBytes(response.data.content));
+    }
+
+    // For public repositories fetch from a CDN. Tries multiple CDNs as fail-safe
     const user = this.owner;
     const repo = this.name;
     const cdnURLs = [
@@ -221,5 +244,16 @@ export default class Repository {
         }
       }
     }
+  }
+
+  // Brief: Returns CDN URLs for viewing content for the provided commit
+  // Params: commitHash <string>
+  cdnLinks (commitHash) {
+    const cdnBaseUrl = `https://cdn.jsdelivr.net/gh/${this.owner}/${this.name}@${commitHash}`;
+    return {
+      'octet-stream': cdnBaseUrl + '/value',
+      text: cdnBaseUrl + '/value.txt',
+      json: cdnBaseUrl + '/value.json'
+    };
   }
 }
