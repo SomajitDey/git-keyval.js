@@ -2,8 +2,8 @@ import * as types from './types.js';
 import assert from 'assert';
 
 function test (input) {
-  it(`For input: ${input}, type: ${types.getType(input)}`, () => {
-    assert.deepStrictEqual(types.bytesToTyped(types.typedToBytes(input)), input);
+  it(`For input: ${input}, type: ${types.getType(input)}`, async () => {
+    assert.deepStrictEqual(types.bytesToTyped(await types.typedToBytes(input)), input);
   });
 }
 
@@ -19,7 +19,8 @@ describe('Testing types', () => {
       [{ hi: 'there!' }, { how: 'are you?' }],
       { key: 'value' },
       'null',
-      new Uint8Array([123, 298])
+      new Uint8Array([123, 298]),
+      new Blob(['Hello World!', ' ', 'How are you?'], { type: 'text/plain' })
     ];
 
     inputs.forEach(test);
