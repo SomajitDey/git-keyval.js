@@ -19,8 +19,8 @@ export default class Database {
     this.repository = repository;
   }
 
-  async keyToUuid (key, { push = false }) {
-    const { type, bytes } = types.typedToBytes(key);
+  async keyToUuid (key, { push = false } = {}) {
+    const { type, bytes } = await types.typedToBytes(key);
     let commitHash;
     if (push) {
       commitHash = await this.repository.commitBytes(bytes);
@@ -30,8 +30,8 @@ export default class Database {
     return { uuid: `${type}/${hexToBase64Url(commitHash)}`, type, commitHash };
   }
 
-  async create (key, val, { overwrite = true }) {
-    const { type: valType, bytes: valBytes } = types.typedToBytes(val);
+  async create (key, val, { overwrite = false } = {}) {
+    const { type: valType, bytes: valBytes } = await types.typedToBytes(val);
     // Using Promise.all to parallelize network IO
     const [
       { uuid, commitHash: keyCommitHash },
@@ -45,12 +45,18 @@ export default class Database {
       { beforeOid, afterOid: keyCommitHash, name: `refs/tags/kv/${uuid}` },
       { afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
       { afterOid: types.typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
-    ]);
+    ]).catch(async (err) => {
+      if (!overwrite) {
+        const { bytes: valBytesCommitHash } = await this.valCommitHash(key);
+        if (valBytesCommitHash !== undefined) throw new Error('Key exists');
+      }
+      throw err;
+    });
     return this.repository.cdnLinks(valBytesCommitHash);
   }
 
-  async read (key) {
-    const uuid = await this.keyToUuid(key);
+  async valCommitHash (key) {
+    const { uuid } = await this.keyToUuid(key);
     const bytesBranch = `kv/${uuid}/value/bytes`;
     const typeBranch = `kv/${uuid}/value/type`;
 
@@ -58,19 +64,7 @@ export default class Database {
 
     if (this.repository.authenticated) {
       // GraphQL consumes only one ratelimit point for querying two branches!
-      (
-        {
-          bytes: {
-            target: {
-              oid: valBytesCommitHash
-            }
-          },
-          type: {
-            target: {
-              oid: valTypeCommitHash
-            }
-          }
-        } = await this.repository.graphql(
+      const { bytes, type } = await this.repository.graphql(
         `
           query($id: ID!, $bytesBranch: String!, $typeBranch: String!) {
             node(id: $id) {
@@ -94,9 +88,11 @@ export default class Database {
           bytesBranch: `refs/heads/${bytesBranch}`,
           typeBranch: `refs/heads/${typeBranch}`
         }
-        )
-          .then((response) => response.data.node)
-      );
+      )
+        .then((response) => response.node);
+
+      valBytesCommitHash = bytes?.target?.oid;
+      valTypeCommitHash = type?.target?.oid;
     } else {
       [valBytesCommitHash, valTypeCommitHash] = await Promise.all([
         this.repository.branchToCommitHash(bytesBranch),
@@ -104,6 +100,12 @@ export default class Database {
       ]);
     }
 
+    return { bytes: valBytesCommitHash, type: valTypeCommitHash };
+  }
+
+  async read (key) {
+    const { bytes: valBytesCommitHash, type: valTypeCommitHash } = await this.valCommitHash(key);
+    if (valBytesCommitHash === undefined) return;
     const valBytes = await this.repository.fetchCommitContent(valBytesCommitHash);
 
     return types.bytesToTyped({
@@ -117,6 +119,13 @@ export default class Database {
   }
 
   async delete ([...keys]) {
-
+    const input = [];
+    for (const key of keys) {
+      const { uuid } = await this.keyToUuid(key);
+      input.push({ name: `refs/tags/kv/${uuid}` });
+      input.push({ name: `kv/${uuid}/value/bytes` });
+      input.push({ name: `kv/${uuid}/value/type` });
+    }
+    return this.repository.updateRefs(input);
   }
 }

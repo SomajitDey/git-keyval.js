@@ -166,7 +166,6 @@ export default class Repository {
       const { afterOid, name } = refUpdate;
 
       // If afterOid is falsy (undefined, null, false, or 0), format ref for deletion
-      // If afterOid includes the string `empty`, format ref to point to the 'empty' tag
       if (!afterOid) refUpdate.afterOid = '0000000000000000000000000000000000000000';
 
       // If name is not a fully qualified name, format ref as branch

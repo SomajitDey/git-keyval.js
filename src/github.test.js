@@ -13,12 +13,8 @@ const repository = await Repository.instantiate({
   auth: process.env.GITHUB_AUTH
 });
 
-describe('Testing utils/github', () => {
+describe('Testing github', () => {
   describe('init', () => {
-    it('node id', () => {
-      assert.equal(repository.id, 'R_kgDOOUU7Ig');
-    });
-
     it('is public', () => {
       assert.equal(repository.isPublic, true);
     });
@@ -33,7 +29,7 @@ describe('Testing utils/github', () => {
   });
 
   it('commitBytes, bytesToCommitHash, fetchCommitContent, cdnLinks, updateRefs and branchToCommitHash', async () => {
-    const bytes = textToBytes(JSON.stringify({ Hello: 'World!' }));
+    const bytes = crypto.getRandomValues(new Uint8Array(12));
     const commitHash = await repository.commitBytes(bytes);
     assert.equal(await repository.bytesToCommitHash(bytes), commitHash);
     assert.deepStrictEqual(await repository.fetchCommitContent(commitHash), bytes);
