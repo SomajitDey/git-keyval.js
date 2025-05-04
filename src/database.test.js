@@ -23,12 +23,19 @@ describe('Testing database', () => {
       type: 'JSON',
       commitHash: '81bac8a9d5a229a27842c4b07e127f5bb42f4f21'
     });
-    const val = new Blob([JSON.stringify({ how: 'are you?' })], { type: 'application/json' });
+    const val = { how: 'are you?' };
     await kv.create(key, val, { overwrite: true });
     // Forcing delays using setTimeout in order to bust caches, if any
     // assert.deepStrictEqual(await kvUnauthenticated.read(key), val);
     assert.deepStrictEqual(await kv.read(key), val);
     assert.rejects(kv.create(key, val), { message: 'Key exists' });
+    const modifier = (obj) => {
+      obj.how = 'are you now?';
+      return obj;
+    };
+    const modifiedVal = modifier(val);
+    await kv.update(key, modifier);
+    assert.deepStrictEqual(await kv.read(key), modifiedVal);
     const newVal = crypto.randomUUID();
     await kv.create(key, newVal, { overwrite: true });
     // assert.deepStrictEqual(await kvUnauthenticated.read(key), newVal);
