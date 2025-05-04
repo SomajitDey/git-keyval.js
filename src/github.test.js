@@ -2,6 +2,7 @@
 
 import Repository from './github.js';
 import { textToBytes, bytesToText } from './utils/conversions.js';
+import { typesToCommitHash } from './types.js';
 import assert from 'assert';
 import { config } from 'dotenv';
 
@@ -26,6 +27,10 @@ describe('Testing github', () => {
     it('unencrypted', () => {
       assert.equal(Boolean(repository.encryptSecret), false);
     });
+  });
+
+  it('hasCommit', async () => {
+    assert.equal(await repository.hasCommit(typesToCommitHash.get('Blob')), true);
   });
 
   it('commitBytes, bytesToCommitHash, fetchCommitContent, cdnLinks, updateRefs and branchToCommitHash', async () => {

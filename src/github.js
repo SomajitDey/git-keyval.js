@@ -99,27 +99,31 @@ export default class Repository {
     });
   }
 
+  // Brief: Returns Boolean as to whether the provided commit exists in the repository
+  // Params: commitHash <string>
+  // Returns: <Boolean>
+  async hasCommit (commitHash) {
+    return this.request('HEAD /repos/{owner}/{repo}/git/commits/{ref}', {
+      ref: commitHash
+    })
+      .then(() => true)
+      .catch((err) => {
+        if (err.status == 404) {
+          return false;
+        } else {
+          throw new Error(`GitHub API network error: ${err.status}`);
+        }
+      });
+  }
+
   // Brief: Put provided bytes in ./value path of a deduplicated commit
   // Params: bytes <Uint8Array>
   // Returns: hex <string> commit hash
   // Ref: https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#create-or-update-file-contents
   async commitBytes (bytes) {
-  // First, check if the desired commit already exists using an unauthenticated request to GitHub REST API
+    // First, check if the desired commit already exists using GitHub REST API
     const commitHash = await this.bytesToCommitHash(bytes);
-    const exists = await fetch(`https://api.github.com/repos/${this.owner}/${this.name}/git/commits/${commitHash}`, {
-      method: 'HEAD'
-    }).then((response) => {
-      const statusCode = response.status;
-      if (response.ok) {
-        return true;
-      } else if (statusCode == 404) {
-        return false;
-      } else {
-        throw new Error(`GitHub API network error: ${statusCode}`);
-      }
-    });
-
-    if (exists) return commitHash; // Hooray!
+    if (await this.hasCommit(commitHash)) return commitHash; // Hooray!
 
     // Undertake the expensive process of commit creation using authenticated GitHub API requests
     const blobHash = await this.request('POST /repos/{owner}/{repo}/git/blobs', {

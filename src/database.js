@@ -41,18 +41,17 @@ export default class Database {
       this.repository.commitBytes(valBytes)
     ]);
     const beforeOid = overwrite ? undefined : '0000000000000000000000000000000000000000';
-    await this.repository.updateRefs([
-      { beforeOid, afterOid: keyCommitHash, name: `refs/tags/kv/${uuid}` },
-      { afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
-      { afterOid: types.typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
-    ]).catch(async (err) => {
-      if (!overwrite) {
-        const { bytes: valBytesCommitHash } = await this.valCommitHash(key);
-        if (valBytesCommitHash !== undefined) throw new Error('Key exists');
-      }
+    try {
+      await this.repository.updateRefs([
+        { beforeOid, afterOid: keyCommitHash, name: `refs/tags/kv/${uuid}` },
+        { afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
+        { afterOid: types.typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
+      ]);
+      return this.repository.cdnLinks(valBytesCommitHash);
+    } catch (err) {
+      if (!overwrite && await this.has(key)) throw new Error('Key exists');
       throw err;
-    });
-    return this.repository.cdnLinks(valBytesCommitHash);
+    }
   }
 
   async valCommitHash (key) {
@@ -101,6 +100,11 @@ export default class Database {
     }
 
     return { bytes: valBytesCommitHash, type: valTypeCommitHash };
+  }
+
+  async has (key) {
+    const { bytes: valBytesCommitHash } = await this.valCommitHash(key);
+    return valBytesCommitHash !== undefined;
   }
 
   async read (key) {
