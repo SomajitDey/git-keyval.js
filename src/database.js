@@ -30,6 +30,13 @@ export default class Database {
     return { uuid: `${type}/${hexToBase64Url(commitHash)}`, type, commitHash };
   }
 
+  async uuidToKey (uuid) {
+    const [ type, base64CommitHash ] = uuid.split('/');
+    const commitHash = base64ToHex(base64CommitHash);
+    const bytes = await this.repository.fetchCommitContent(commitHash);
+    return types.bytesToTyped({ type, bytes });
+  }
+  
   async create (key, val, { overwrite = false } = {}) {
     const { type: valType, bytes: valBytes } = await types.typedToBytes(val);
     // Using Promise.all to parallelize network IO

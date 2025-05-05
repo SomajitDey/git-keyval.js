@@ -23,6 +23,7 @@ describe('Testing database', () => {
       type: 'JSON',
       commitHash: '81bac8a9d5a229a27842c4b07e127f5bb42f4f21'
     });
+    assert.deepStrictEqual(await kv.uuidToKey('JSON/gbrIqdWiKaJ4QsSwfhJ_W7QvTyE'), key);
     const val = { how: 'are you?' };
     await kv.create(key, val, { overwrite: true });
     // assert.deepStrictEqual(await kvUnauthenticated.read(key), val);
