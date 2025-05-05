@@ -66,11 +66,11 @@ export default class Repository {
       this.request('GET /repos/{owner}/{repo}')
         .then((response) => response.data),
       this.request('GET /repos/{owner}/{repo}/git/ref/{ref}', {
-        ref: 'tags/kv/types/JSON'
+        ref: 'tags/kv/types/Blob'
       })
         .then((response) => {
           if (
-            response.data.object.sha !== typesToCommitHash.get('JSON')
+            response.data.object.sha !== typesToCommitHash.get('Blob')
           ) throw new Error('Mismatched');
         })
         .catch((err) => {

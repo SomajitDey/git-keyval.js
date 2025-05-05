@@ -139,6 +139,24 @@ export default class Database {
       });
   }
 
+  async increment (key, incr = 1) {
+    const modifier = (num) => {
+      if (types.getType(num) !== 'Number') throw new Error('Old value must be a Number');
+      return num + incr;
+    };
+
+    return this.update(key, modifier);
+  }
+
+  async toggle (key) {
+    const modifier = (bool) => {
+      if (types.getType(bool) !== 'Boolean') throw new Error('Old value must be a Boolean');
+      return !bool;
+    };
+
+    return this.update(key, modifier);
+  }
+
   async delete ([...keys]) {
     const input = [];
     for (const key of keys) {

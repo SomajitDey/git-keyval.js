@@ -1,7 +1,7 @@
 import * as conversions from './utils/conversions.js';
-import ambimap from './utils/ambimap.js';
+import Ambimap from './utils/ambimap.js';
 
-export const typesToCommitHash = new ambimap([
+export const typesToCommitHash = new Ambimap([
   ['Number', '14f91166da82bb4c61d208ac02c492355e8d2cc2'],
   ['Boolean', '6e3272db79ec82e0caee4729c2b7f7e90e1900d8'],
   ['String', '297f8811f388d4789333d7f2377519c145c4f874'],
@@ -18,8 +18,8 @@ export function getType (input) {
 }
 
 // Brief: Convert typed input into bytes. Also doubles as type checker/validator.
-// Params: <string | number | object | Uint8Array>
-// Returns: { bytes: <Uint8Array>, type: 'Number' | 'Boolean' | 'String' | 'JSON' | undefined }
+// Params: <boolean | string | number | array | object | Uint8Array | blob>
+// Returns: { bytes: <Uint8Array>, type: 'Number' | 'Boolean' | 'String' | 'JSON' | 'Blob' | undefined }
 export async function typedToBytes (input) {
   // Below we use fall-through a lot! Use of 'return' implies 'break'
   const type = getType(input);

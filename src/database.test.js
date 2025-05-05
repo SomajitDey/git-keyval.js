@@ -16,7 +16,7 @@ const kv = await DB.instantiate({
 // });
 
 describe('Testing database', () => {
-  it('keyToUuid, create, read, delete', async () => {
+  it('keyToUuid, create, read, update, increment, toggle, delete', async () => {
     const key = { hello: 'world!' };
     assert.deepStrictEqual(await kv.keyToUuid(key), {
       uuid: 'JSON/gbrIqdWiKaJ4QsSwfhJ_W7QvTyE',
@@ -25,7 +25,6 @@ describe('Testing database', () => {
     });
     const val = { how: 'are you?' };
     await kv.create(key, val, { overwrite: true });
-    // Forcing delays using setTimeout in order to bust caches, if any
     // assert.deepStrictEqual(await kvUnauthenticated.read(key), val);
     assert.deepStrictEqual(await kv.read(key), val);
     assert.rejects(kv.create(key, val), { message: 'Key exists' });
@@ -36,10 +35,17 @@ describe('Testing database', () => {
     const modifiedVal = modifier(val);
     await kv.update(key, modifier);
     assert.deepStrictEqual(await kv.read(key), modifiedVal);
-    const newVal = crypto.randomUUID();
-    await kv.create(key, newVal, { overwrite: true });
-    // assert.deepStrictEqual(await kvUnauthenticated.read(key), newVal);
-    assert.deepStrictEqual(await kv.read(key), newVal);
+    assert.rejects(kv.increment(key, -4), { message: 'Old value must be a Number' });
+    assert.rejects(kv.toggle(key), { message: 'Old value must be a Boolean' });
+
+    await kv.create(key, 3, { overwrite: true });
+    await kv.increment(key, -4);
+    assert.deepStrictEqual(await kv.read(key), -1);
+
+    await kv.create(key, false, { overwrite: true });
+    await kv.toggle(key);
+    assert.deepStrictEqual(await kv.read(key), true);
+
     await kv.delete([key]);
     // assert.deepStrictEqual(await kvUnauthenticated.read(key), undefined);
     assert.deepStrictEqual(await kv.read(key), undefined);

@@ -1,17 +1,17 @@
 // Brief: Extends native `Map` class with an `inv` field to contain the inverse map
-export default class bidirectionalMap extends Map {
+export default class BidirectionalMap extends Map {
   // Brief: To hold the Map object (key => val) the current instance (val => key) inverts
   inv;
 
   // Params: (required) iterable <same as taken by Map(), an iterable or Map instance>
-  // Params: inverseOf <bidirectionalMap>, for internal use only
+  // Params: inverseOf <BidirectionalMap>, for internal use only
   constructor (iterable, inverseOf) {
     super(iterable);
     if (inverseOf) {
       this.inv = inverseOf;
     } else {
       const invEntries = Array.from(this).map(([val, key]) => [key, val]);
-      this.inv = new bidirectionalMap(invEntries, this);
+      this.inv = new BidirectionalMap(invEntries, this);
       if (this.inv.size < invEntries.length) throw new Error('Breaking bijection');
     }
     if (this.size !== this.inv.size) throw new Error('Breaking bijection');
