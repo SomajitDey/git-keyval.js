@@ -24,8 +24,10 @@ describe('Testing github', () => {
       assert.equal(repository.authenticated, true);
     });
 
-    it('unencrypted', () => {
-      assert.equal(Boolean(repository.encryptSecret), false);
+    it('unencrypted', async () => {
+      const bytes = crypto.getRandomValues(new Uint8Array(12));
+      assert.deepStrictEqual(await repository.encrypt(bytes), bytes);
+      assert.deepStrictEqual(await repository.decrypt(bytes), bytes);
     });
   });
 

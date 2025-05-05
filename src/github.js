@@ -10,26 +10,36 @@ import * as git from './utils/git-hash.js';
 import { bytesToBase64, base64ToBytes } from './utils/conversions.js';
 import { typesToCommitHash } from './types.js';
 
+const committer = {
+  // Name and email uses the same letter(s) for better compression
+  name: 'a a',
+  email: 'a@a.a',
+  date: '2025-01-01T00:00:00Z'
+};
+
 export default class Repository {
+  static committer = committer;
+
+  committer = committer;
+  author = committer;
+
   // Declaring properties to be initialized by constructor() or init()
-  committer;
-  author;
   owner;
   name;
   authenticated;
-  encryptSecret;
   request;
   graphql;
   id;
   isPublic;
   created;
 
-  static committer = {
-    // Name and email uses the same letter(s) for better compression
-    name: 'a a',
-    email: 'a@a.a',
-    date: '2025-01-01T00:00:00Z'
-  };
+  async encrypt (bytes) {
+    return bytes;
+  }
+
+  async decrypt (bytes) {
+    return bytes;
+  }
 
   // Await this static method to get a class instance
   // Params: Same as that of constructor() below
@@ -39,13 +49,12 @@ export default class Repository {
     return instance;
   }
 
-  constructor ({ owner, repo, auth, secret }) {
-    this.committer = Repository.committer;
-    this.author = Repository.committer;
+  constructor ({ owner, repo, auth, encrypt, decrypt }) {
     this.owner = owner;
     this.name = repo;
     this.authenticated = Boolean(auth);
-    this.encryptSecret = secret;
+    if (encrypt) this.encrypt = encrypt;
+    if (decrypt) this.decrypt = decrypt;
 
     this.request = request.defaults({
       owner,
@@ -86,7 +95,7 @@ export default class Repository {
 
   // Brief: Computes the hash of an orphan or root commit that contains the given bytes at ./value
   async bytesToCommitHash (bytes) {
-    const blobHash = await git.blobHash(bytes);
+    const blobHash = await this.encrypt(bytes).then((bytes) => git.blobHash(bytes));
     const treeHash = await git.treeHash({
       value: { type: 'blob', hash: blobHash },
       'value.txt': { type: 'blob', hash: blobHash },
@@ -126,8 +135,9 @@ export default class Repository {
     if (await this.hasCommit(commitHash)) return commitHash; // Hooray!
 
     // Undertake the expensive process of commit creation using authenticated GitHub API requests
+    const content = await this.encrypt(bytes).then((bytes) => bytesToBase64(bytes));
     const blobHash = await this.request('POST /repos/{owner}/{repo}/git/blobs', {
-      content: bytesToBase64(bytes),
+      content,
       encoding: 'base64'
     }).then((response) => response.data.sha);
 
@@ -217,7 +227,8 @@ export default class Repository {
         path: 'value',
         ref: commitHash
       })
-        .then((response) => base64ToBytes(response.data.content));
+        .then((response) => base64ToBytes(response.data.content))
+        .then((bytes) => this.decrypt(bytes));
     }
 
     // For public repositories fetch from a CDN. Tries multiple CDNs as fail-safe
@@ -236,7 +247,8 @@ export default class Repository {
           .then((response) => {
             if (!response.ok) throw new Error(response.status);
             return response.bytes();
-          });
+          })
+          .then((bytes) => this.decrypt(bytes));
         return bytes; // Error handler below is designed to skip this step in case of error
       } catch (err) {
         if (err.message == 404) {
