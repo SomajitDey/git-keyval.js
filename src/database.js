@@ -120,12 +120,19 @@ export default class Database {
 
   // Brief: modifier(oldVal) => newVal
   // Params: modifier <function>, async or not
+  // Returns: { oldValue, currentValue, cdnLinks } <object>
   async update (key, modifier) {
     const oldVal = await this.read(key);
-    const { commitHash: oldValBytesCommitHash } = await this.keyToUuid(oldVal);
-    // modifier may have side-effects, like modifying the oldVal itself.
-    // Hence, running modifier as the last function on oldVal, after keyToUuid(oldVal).
-    const val = await modifier(oldVal);
+    // Clone (deep copy) instead of returning (reference to) oldVal as
+    //  modifier() might modify oldVal in place
+    const oldValClone = structuredClone(oldVal);
+    const [
+      { commitHash: oldValBytesCommitHash },
+      val
+    ] = await Promise.all([
+      this.keyToUuid(oldValClone),
+      modifier(oldVal)
+    ]);
     const { type: valType, bytes: valBytes } = await types.typedToBytes(val);
     const valBytesCommitHash = await this.repository.commitBytes(valBytes);
     const { uuid } = await this.keyToUuid(key);
@@ -133,7 +140,13 @@ export default class Database {
       { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
       { afterOid: types.typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
     ])
-      .then(() => this.repository.cdnLinks(valBytesCommitHash))
+      .then(() => {
+        return {
+          oldValue: oldValClone,
+          currentValue: val,
+          cdnLinks: this.repository.cdnLinks(valBytesCommitHash)
+        };
+      })
       .catch((err) => {
         throw err;// new Error('Update failed');
       });
