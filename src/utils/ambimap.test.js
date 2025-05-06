@@ -22,7 +22,10 @@ describe('Testing bi-directional map', () => {
   });
 
   it('Error for non-bijective maps', () => {
-    assert.throws(() => { new Ambimap([['keyA', 'val'], ['keyB', 'val']]); });
+    assert.throws(
+      () => new Ambimap([['keyA', 'val'], ['keyB', 'val']]),
+      { message: 'Breaking bijection' }
+    );
   });
 
   it('clear()', () => {

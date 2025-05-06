@@ -2,27 +2,41 @@
 // Ref: https://github.com/creationix/js-git/blob/master/lib/modes.js
 // Ref: https://github.com/creationix/bodec/blob/master/bodec-browser.js
 
-import { textToBytes, hexToBytes } from './conversions.js';
+import { textToBytes, hexToBytes, bytesToHex, concatBytes } from './conversions.js';
 import { hash } from './crypto.js';
+import { getType } from '../types.js';
 
-// Ref: https://stackoverflow.com/a/49129872
-function mergeByteArrays (bytesLead, bytesTrail) {
-  const merged = new Uint8Array(bytesLead.length + bytesTrail.length);
-  merged.set(bytesLead);
-  merged.set(bytesTrail, bytesLead.length);
-  return merged;
+async function gitHash (bytes, type = 'blob', algo = 'SHA-1') {
+  const mergedBytes = await concatBytes([
+    textToBytes(`${type} ${bytes.length}\0`),
+    bytes
+  ]);
+  return bytesToHex(await hash(mergedBytes, algo));
 }
 
-async function gitHash (bytesArray, type = 'blob', algo = 'SHA-1') {
-  const headerBytes = textToBytes(`${type} ${bytesArray.length}\0`);
-  const mergedBytesArray = mergeByteArrays(headerBytes, bytesArray);
-  return hash(mergedBytesArray, algo);
-}
-
-// Params: input <string> or <Uint8Array>
+// Params: input <boolean | string | number | array | object | ArrayBuffer | Uint8Array>
 export async function blobHash (input) {
-  const bytesArray = typeof input === 'string' ? textToBytes(input) : input;
-  return gitHash(bytesArray);
+  let bytes;
+  switch (getType(input)) {
+    case 'Number':
+    case 'Boolean':
+    case 'String':
+      bytes = textToBytes(input.toString());
+      break;
+    case 'Array':
+    case 'Object':
+      bytes = textToBytes(JSON.stringify(input));
+      break;
+    case 'Uint8Array':
+      bytes = input;
+      break;
+    case 'ArrayBuffer':
+      bytes = new Uint8Array(input);
+      break;
+    default:
+      throw new Error('Unsupported parameter type');
+  }
+  return gitHash(bytes);
 }
 
 // Ref: https://github.com/creationix/js-git/blob/master/lib/modes.js
@@ -70,10 +84,14 @@ function treeSort (a, b) {
 export async function treeHash (entries) {
   // Turn entries object to a sorted array, with types replaced by modes
   const entriesArray = Object.keys(entries).map(treeMap, entries).sort(treeSort);
-  const tree = entriesArray.reduce((accumulator, entry) => {
-    const merged = mergeByteArrays(textToBytes(`${entry.mode} ${entry.name}\0`), hexToBytes(entry.hash));
-    return mergeByteArrays(accumulator, merged);
-  }, new Uint8Array(0));
+  const accumulator = [];
+  for (const entry of entriesArray) {
+    accumulator.push(
+      textToBytes(`${entry.mode} ${entry.name}\0`),
+      hexToBytes(entry.hash)
+    );
+  }
+  const tree = await concatBytes(accumulator);
   return gitHash(tree, 'tree');
 }
 

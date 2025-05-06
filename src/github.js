@@ -171,6 +171,7 @@ export default class Repository {
     }).then((response) => response.data.sha);
   }
 
+  // Brief: Equivalent to CLI: git push --atomic --force-with-lease <name>:<beforeOid> origin +<afterOid>:<name>
   // Params: refUpdates <[<refUpdate>]>;  [] means array
   // Each <refUpdate> is an object, ! means required:
   //  { beforeOid: hex <string>, afterOid: hex <string> | 0, name: <string>! }

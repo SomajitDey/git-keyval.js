@@ -16,27 +16,27 @@ const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
 // Params: txt <string>
-// Returns: bytesArray <Uint8Array>
+// Returns: bytes <Uint8Array>
 export function textToBytes (txt) {
   return textEncoder.encode(txt);
 }
 
-// Params: bytesArray <Uint8Array>
+// Params: bytes <Uint8Array>
 // Returns: txt <string>
-export function bytesToText (bytesArray) {
-  return textDecoder.decode(bytesArray);
+export function bytesToText (bytes) {
+  return textDecoder.decode(bytes);
 }
 
-// Params: bytesArray <Uint8Array>
+// Params: bytes <Uint8Array>
 // Returns: hexString <string>
-export function bytesToHex (bytesArray) {
-  return Array.from(bytesArray)
+export function bytesToHex (bytes) {
+  return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 }
 
 // Params: hexString <Uint8Array>
-// Returns: bytesArray <Uint8Array>
+// Returns: bytes <Uint8Array>
 export function hexToBytes (hexString) {
   const numNibbles = hexString.length;
   if (numNibbles % 2 !== 0) throw new Error('Number of provided nibbles must be even');
@@ -67,18 +67,18 @@ export function base64ToHex (base64String) {
 
 // Brief: Convert any 64-bit number (float or int, signed or unsigned) into bytes
 // Params: num <number>
-// Returns: bytesArray <Uint8Array>
+// Returns: bytes <Uint8Array>
 export function numToBytes (num) {
   return new Uint8Array(new Float64Array([num]).buffer);
 }
 
-// Params: bytesArray <Uint8Array>
+// Params: bytes <Uint8Array>
 // Returns: number <number>
 // Remarks: Fidelity of conversion may be checked using Number.isSafeInteger() on the returned value
 // If returned value is not a safe integer it's guaranteed to be very close to the actual number
 // Ref: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/isSafeInteger#description
-export function bytesToNum (bytesArray) {
-  return new Float64Array(bytesArray.buffer)[0];
+export function bytesToNum (bytes) {
+  return new Float64Array(bytes.buffer)[0];
 }
 
 // Brief: Compress any 64-bit number (float or int, signed or unsigned) to base64 string with <= 11 characters
@@ -102,4 +102,12 @@ export function numToBase64Url (num) {
 // Ref: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/isSafeInteger#description
 export function base64ToNum (base64String) {
   return bytesToNum(base64ToBytes(base64String.padStart(11, 'A')));
+}
+
+// Brief: Concatenate provided bytes
+// Params: bytes <[Uint8Array]>, Array of Bytes
+// Returns: <Uint8Array>
+// Alternate implementation: refer https://stackoverflow.com/a/49129872
+export async function concatBytes ([...bytes]) {
+  return new Uint8Array(await new Blob(bytes).arrayBuffer());
 }

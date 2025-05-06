@@ -1,8 +1,24 @@
-import { textToBytes, bytesToHex } from './conversions.js';
+// Brief: Cryptographic utilities that act on bytes <Uint8Array>
+//  Use ./conversions.js and ../types.js to convert other types into bytes
 
-// Params: input <string> or <Uint8Array>
-export async function hash (input, algo = 'SHA-256') {
-  const bytesArray = typeof input === 'string' ? textToBytes(input) : input;
-  return crypto.subtle.digest(algo, bytesArray)
-    .then((buffer) => bytesToHex(new Uint8Array(buffer)));
+// Params: bytes <Uint8Array>
+export async function hash (bytes, algo = 'SHA-256') {
+  return crypto.subtle.digest(algo, bytes)
+    .then((buffer) => new Uint8Array(buffer));
+}
+
+export default class Codec {
+  key;
+
+  static async instantiate (secretBytes) {
+    const instance = new Codec();
+    instance.key = await crypto.subtle.importKey('raw', secretBytes, 'AES-GCM', true, [
+      'encrypt',
+      'decrypt'
+    ]);
+    return instance;
+  }
+
+  async encrypt (bytes) {
+  }
 }

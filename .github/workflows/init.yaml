@@ -34,7 +34,7 @@ jobs:
           ln value value.txt
           ln value value.json
           refspec=''
-          for type in 'Number' 'Boolean' 'String' 'JSON' 'Blob'; do
+          for type in 'Number' 'Boolean' 'String' 'JSON' 'Blob' 'ArrayBuffer'; do
             git checkout --orphan="${type}"
             echo -n "${type}" > value
             git add value*

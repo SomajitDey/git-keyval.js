@@ -20,6 +20,7 @@ describe('Testing types', () => {
       { key: 'value' },
       'null',
       new Uint8Array([123, 298]),
+      new Float64Array([12, 78]).buffer,
       new Blob(['Hello World!', ' ', 'How are you?'], { type: 'text/plain' })
     ];
 

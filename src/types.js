@@ -18,8 +18,11 @@ export function getType (input) {
 }
 
 // Brief: Convert typed input into bytes. Also doubles as type checker/validator.
-// Params: <boolean | string | number | array | object | Uint8Array | blob>
-// Returns: { bytes: <Uint8Array>, type: 'Number' | 'Boolean' | 'String' | 'JSON' | 'Blob' | undefined }
+// Params: <boolean | string | number | array | object | ArrayBuffer | Uint8Array | blob>
+// Returns: {
+//    bytes: <Uint8Array>,
+//    type: 'Number' | 'Boolean' | 'String' | 'JSON' | 'ArrayBuffer' | 'Blob' | undefined
+//  }
 export async function typedToBytes (input) {
   // Below we use fall-through a lot! Use of 'return' implies 'break'
   const type = getType(input);
@@ -39,18 +42,22 @@ export async function typedToBytes (input) {
     case 'Object':
       return { type: 'JSON', bytes: conversions.textToBytes(JSON.stringify(input)) };
     case 'Blob':
-      const blobBuffer = input.arrayBuffer();
+      // Using .arrayBuffer() instead of .bytes() because the latter isn't universally supported
+      const blobBytes = new Uint8Array(await input.arrayBuffer());
       const mimeType = input.type;
       const offset = mimeType.length + 1;
-      const bytes = new Uint8Array(offset + input.size);
-      bytes.set([offset]);
-      bytes.set(conversions.textToBytes(mimeType), 1);
-      bytes.set(new Uint8Array(await blobBuffer), offset);
+      const bytes = await conversions.concatBytes([
+        new Uint8Array([offset]),
+        conversions.textToBytes(mimeType),
+        blobBytes
+      ]);
       return { type, bytes };
     case 'Uint8Array':
       return { bytes: input };
+    case 'ArrayBuffer':
+      return { type, bytes: new Uint8Array(input) };
     default:
-      throw new Error('Input type not allowed');
+      throw new Error('Unsupported parameter type');
   }
 }
 
@@ -71,7 +78,11 @@ export function bytesToTyped ({ type, bytes }) {
       const offset = bytes[0];
       const mimeType = conversions.bytesToText(bytes.slice(1, offset));
       return new Blob([bytes.slice(offset)], { type: mimeType });
-    default:
+    case 'ArrayBuffer':
+      return bytes.buffer;
+    case undefined:
       return bytes;
+    default:
+      throw new Error('Unsupported type');
   }
 }
