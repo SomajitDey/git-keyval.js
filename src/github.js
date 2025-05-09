@@ -223,11 +223,18 @@ export default class Repository {
   // Returns: bytes <Uint8Array> | undefined (if fails)
   async fetchCommitContent (commitHash) {
     // For private repositories fetch from GitHub REST API
+    // REST API for repo contents gives anomalous base64 encoding for arbitrary bytes content.
+    // Instead, therefore, we take the blob hash from the API for repo contents.
+    // Using REST API for blobs subsequently, gives the correct base64 encoding of content.
     if (!this.isPublic) {
       return this.request('GET /repos/{owner}/{repo}/contents/{path}', {
         path: 'value',
         ref: commitHash
       })
+        .then((response) => response.data.sha)
+        .then((blobHash) => this.request('GET /repos/{owner}/{repo}/git/blobs/{blobHash}', {
+          blobHash
+        }))
         .then((response) => base64ToBytes(response.data.content))
         .then((bytes) => this.decrypt(bytes));
     }
@@ -265,6 +272,7 @@ export default class Repository {
   // Brief: Returns CDN URLs for viewing content for the provided commit
   // Params: commitHash <string>
   cdnLinks (commitHash) {
+    if (!this.isPublic) return {}; // CDN doesn't exist for private repos
     const cdnBaseUrl = `https://cdn.jsdelivr.net/gh/${this.owner}/${this.name}@${commitHash}`;
     return {
       'octet-stream': cdnBaseUrl + '/value',

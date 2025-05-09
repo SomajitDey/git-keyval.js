@@ -24,12 +24,15 @@ const kv = await DB.instantiate({
   decrypt: async (bytes) => codec.decrypt(bytes)
 });
 
-const kvUnauthenticated = await DB.instantiate({
-  owner: process.env.GITHUB_OWNER,
-  repo: process.env.GITHUB_REPO,
-  encrypt: async (bytes) => codec.encrypt(bytes),
-  decrypt: async (bytes) => codec.decrypt(bytes)
-});
+// Can't use unauthenticated for private repositories
+const kvUnauthenticated = kv.repository.isPublic
+  ? await DB.instantiate({
+    owner: process.env.GITHUB_OWNER,
+    repo: process.env.GITHUB_REPO,
+    encrypt: async (bytes) => codec.encrypt(bytes),
+    decrypt: async (bytes) => codec.decrypt(bytes)
+  })
+  : kv;
 
 describe('Testing database', () => {
   it('keyToUuid, uuidToKey, create, read, update, increment, toggle, delete', async () => {
