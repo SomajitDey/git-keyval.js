@@ -1,9 +1,15 @@
 import Codec, * as cryptolib from './crypto.js';
-import { textToBytes, hexToBytes } from './conversions.js';
+import { textToBytes, hexToBytes, concatBytes } from './conversions.js';
 import assert from 'assert';
 
+const passwd = 'Secret key';
 const salt = crypto.getRandomValues(new Uint8Array(12));
-const codec = await Codec.instantiate('Secret key', salt);
+const iv = (bytes) => concatBytes([
+  textToBytes(passwd),
+  salt,
+  bytes
+]);
+const codec = await Codec.instantiate(passwd, salt, iv);
 
 describe('Testing utils/crypto', () => {
   it('hash', async () => {

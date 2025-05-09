@@ -44,6 +44,7 @@ export default class Codec {
   key;
 
   // Brief: SHA-256 of the returned bytes will be used as AES-GCM's IV while encrypting the given bytes
+  //  Using async just to allow custom async functions
   async iv (bytes) {
     return crypto.getRandomValues(new Uint8Array(32));
   }
@@ -53,7 +54,7 @@ export default class Codec {
   }
 
   // Brief: Returns a complete instance of this class
-  // Params: passwd <String>, salt <Uint8Array>
+  // Params: passwd <String>, salt <Uint8Array>, iv <function> - see iv() above, may not be async
   // Ref: https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/deriveKey#pbkdf2_derive_aes_key_from_password
   static async instantiate (passwd, salt, iv = undefined) {
     const instance = new Codec(iv);

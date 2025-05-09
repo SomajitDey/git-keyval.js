@@ -1,32 +1,42 @@
 import DB from './database.js';
+import Codec from './utils/crypto.js';
+import { textToBytes, concatBytes } from './utils/conversions.js';
 import assert from 'assert';
 import { config } from 'dotenv';
 
 config(); // Sourcing .env
 
+const passwd = process.env.PASSWORD;
+const ownerRepo = `${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}`;
+const salt = textToBytes(ownerRepo);
+const iv = (bytes) => concatBytes([
+  textToBytes(passwd),
+  salt,
+  bytes
+]);
+const codec = await Codec.instantiate(passwd, salt, iv);
+
 const kv = await DB.instantiate({
   owner: process.env.GITHUB_OWNER,
   repo: process.env.GITHUB_REPO,
-  auth: process.env.GITHUB_AUTH
+  auth: process.env.GITHUB_AUTH,
+  encrypt: async (bytes) => codec.encrypt(bytes),
+  decrypt: async (bytes) => codec.decrypt(bytes)
 });
 
-// const kvUnauthenticated = await DB.instantiate({
-//  owner: process.env.GITHUB_OWNER,
-//  repo: process.env.GITHUB_REPO
-// });
+const kvUnauthenticated = await DB.instantiate({
+  owner: process.env.GITHUB_OWNER,
+  repo: process.env.GITHUB_REPO,
+  encrypt: async (bytes) => codec.encrypt(bytes),
+  decrypt: async (bytes) => codec.decrypt(bytes)
+});
 
 describe('Testing database', () => {
-  it('keyToUuid, create, read, update, increment, toggle, delete', async () => {
+  it('keyToUuid, uuidToKey, create, read, update, increment, toggle, delete', async () => {
     const key = { hello: 'world!' };
-    assert.deepStrictEqual(await kv.keyToUuid(key), {
-      uuid: 'JSON/gbrIqdWiKaJ4QsSwfhJ_W7QvTyE',
-      type: 'JSON',
-      commitHash: '81bac8a9d5a229a27842c4b07e127f5bb42f4f21'
-    });
-    assert.deepStrictEqual(await kv.uuidToKey('JSON/gbrIqdWiKaJ4QsSwfhJ_W7QvTyE'), key);
     const val = { how: 'are you?' };
-    await kv.create(key, val, { overwrite: true });
-    // assert.deepStrictEqual(await kvUnauthenticated.read(key), val);
+    const { uuid } = await kv.create(key, val, { overwrite: true });
+    assert.deepStrictEqual(await kvUnauthenticated.uuidToKey(uuid), key);
     assert.deepStrictEqual(await kv.read(key), val);
     assert.rejects(kv.create(key, val), { message: 'Key exists' });
     const modifier = (obj) => {
@@ -48,7 +58,6 @@ describe('Testing database', () => {
     assert.deepStrictEqual(await kv.read(key), true);
 
     await kv.delete([key]);
-    // assert.deepStrictEqual(await kvUnauthenticated.read(key), undefined);
     assert.deepStrictEqual(await kv.read(key), undefined);
   });
 });

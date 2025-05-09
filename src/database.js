@@ -54,7 +54,7 @@ export default class Database {
         { afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
         { afterOid: types.typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
       ]);
-      return this.repository.cdnLinks(valBytesCommitHash);
+      return { uuid, ...this.repository.cdnLinks(valBytesCommitHash) };
     } catch (err) {
       if (!overwrite && await this.has(key)) throw new Error('Key exists');
       throw err;
