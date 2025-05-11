@@ -94,8 +94,9 @@ export default class Repository {
   }
 
   // Brief: Computes the hash of an orphan or root commit that contains the given bytes at ./value
-  async bytesToCommitHash (bytes) {
-    const blobHash = await this.encrypt(bytes).then((bytes) => git.blobHash(bytes));
+  async bytesToCommitHash (bytes, { encrypt = true } = {}) {
+    const cipher = encrypt ? await this.encrypt(bytes) : bytes;
+    const blobHash = await git.blobHash(cipher);
     const treeHash = await git.treeHash({
       value: { type: 'blob', hash: blobHash },
       'value.txt': { type: 'blob', hash: blobHash },
@@ -127,15 +128,17 @@ export default class Repository {
 
   // Brief: Put provided bytes in ./value path of a deduplicated commit
   // Params: bytes <Uint8Array>
+  // Params: optional, { encrypt: <Boolean> }
   // Returns: hex <string> commit hash
   // Ref: https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#create-or-update-file-contents
-  async commitBytes (bytes) {
+  async commitBytes (bytes, { encrypt = true } = {}) {
     // First, check if the desired commit already exists using GitHub REST API
-    const commitHash = await this.bytesToCommitHash(bytes);
+    const commitHash = await this.bytesToCommitHash(bytes, { encrypt });
     if (await this.hasCommit(commitHash)) return commitHash; // Hooray!
 
     // Undertake the expensive process of commit creation using authenticated GitHub API requests
-    const content = await this.encrypt(bytes).then((bytes) => bytesToBase64(bytes));
+    const cipher = encrypt ? await this.encrypt(bytes) : bytes;
+    const content = bytesToBase64(cipher);
     const blobHash = await this.request('POST /repos/{owner}/{repo}/git/blobs', {
       content,
       encoding: 'base64'
@@ -220,8 +223,9 @@ export default class Repository {
 
   // Brief: Fetch bytes content for the given commit.
   // Params: commitHash <string>
+  // Params: optional, { decrypt: <Boolean> }
   // Returns: bytes <Uint8Array> | undefined (if fails)
-  async fetchCommitContent (commitHash) {
+  async fetchCommitContent (commitHash, { decrypt = true } = {}) {
     // For private repositories fetch from GitHub REST API
     // REST API for repo contents gives anomalous base64 encoding for arbitrary bytes content.
     // Instead, therefore, we take the blob hash from the API for repo contents.
@@ -236,7 +240,10 @@ export default class Repository {
           blobHash
         }))
         .then((response) => base64ToBytes(response.data.content))
-        .then((bytes) => this.decrypt(bytes));
+        .then((bytes) => {
+          if (decrypt) return this.decrypt(bytes);
+          return bytes;
+        });
     }
 
     // For public repositories fetch from a CDN. Tries multiple CDNs as fail-safe
@@ -255,8 +262,8 @@ export default class Repository {
           .then((response) => {
             if (!response.ok) throw new Error(response.status);
             return response.bytes();
-          })
-          .then((bytes) => this.decrypt(bytes));
+          });
+        if (decrypt) return this.decrypt(bytes);
         return bytes; // Error handler below is designed to skip this step in case of error
       } catch (err) {
         if (err.message == 404) {
