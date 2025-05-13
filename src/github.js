@@ -83,7 +83,7 @@ export default class Repository {
           ) throw new Error('Mismatched');
         })
         .catch((err) => {
-          if (err.status == 404 || err.message === 'Mismatched') { throw new Error('Run init workflow in the GitHub repo first!'); }
+          if (err.status === 404 || err.message === 'Mismatched') { throw new Error('Run init workflow in the GitHub repo first!'); }
           throw err;
         })
     ]);
@@ -93,7 +93,7 @@ export default class Repository {
     this.created = new Date(created_at).getTime();
   }
 
-  // Brief: Computes the hash of an orphan or root commit that contains the given bytes at ./value
+  // Brief: Same as commitBytes() below but without actually uploading anything
   async bytesToCommitHash (bytes, { encrypt = true } = {}) {
     const cipher = encrypt ? await this.encrypt(bytes) : bytes;
     const blobHash = await git.blobHash(cipher);
@@ -118,7 +118,7 @@ export default class Repository {
     })
       .then(() => true)
       .catch((err) => {
-        if (err.status == 404) {
+        if (err.status === 404) {
           return false;
         } else {
           throw new Error(`GitHub API network error: ${err.status}`);
@@ -126,9 +126,9 @@ export default class Repository {
       });
   }
 
-  // Brief: Put provided bytes in ./value path of a deduplicated commit
+  // Brief: Put provided bytes and mimeType in a deduplicated commit
   // Params: bytes <Uint8Array>
-  // Params: optional, { encrypt: <Boolean> }
+  // Params: optional, { encrypt: <Boolean> }, to disable encryption on a case-by-case basis
   // Returns: hex <string> commit hash
   // Ref: https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#create-or-update-file-contents
   async commitBytes (bytes, { encrypt = true } = {}) {
@@ -216,14 +216,14 @@ export default class Repository {
     })
       .then((response) => response.data.object.sha)
       .catch((err) => {
-        if (err.status == 404) return;
+        if (err.status === 404) return;
         throw err;
       });
   }
 
   // Brief: Fetch bytes content for the given commit.
   // Params: commitHash <string>
-  // Params: optional, { decrypt: <Boolean> }
+  // Params: optional, { decrypt: <Boolean> }, to disable encryption on a case-by-case basis
   // Returns: bytes <Uint8Array> | undefined (if fails)
   async fetchCommitContent (commitHash, { decrypt = true } = {}) {
     // For private repositories fetch from GitHub REST API
@@ -266,7 +266,7 @@ export default class Repository {
         if (decrypt) return this.decrypt(bytes);
         return bytes; // Error handler below is designed to skip this step in case of error
       } catch (err) {
-        if (err.message == 404) {
+        if (err.message === '404') {
         // If 404 for one CDN, no use trying other CDNs as commit might not exist in GitHub origin
           throw new Error('Commit not found');
         } else {

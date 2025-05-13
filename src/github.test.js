@@ -1,7 +1,6 @@
 // Export your GitHub access-token as env var: GITHUB_PAT before running this script
 
 import Repository from './github.js';
-import { textToBytes, bytesToText } from './utils/conversions.js';
 import { typesToCommitHash } from './types.js';
 import assert from 'assert';
 import { config } from 'dotenv';

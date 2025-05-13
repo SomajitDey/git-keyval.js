@@ -1,3 +1,5 @@
+[![js-semistandard-style](https://cdn.jsdelivr.net/gh/standard/semistandard@v17.0.0/badge.svg)](https://github.com/standard/semistandard)
+
 # 💁 git-keyval.js
 A global Git(Hub)-based Key-Value DataBase to empower you 💪
 
