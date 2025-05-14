@@ -94,7 +94,7 @@ export default class Repository {
   }
 
   // Brief: Same as commitBytes() below but without actually uploading anything
-  async bytesToCommitHash (bytes, { encrypt = true } = {}) {
+  async bytesToCommitHash (bytes, { message, encrypt = true } = {}) {
     const cipher = encrypt ? await this.encrypt(bytes) : bytes;
     const blobHash = await git.blobHash(cipher);
     const treeHash = await git.treeHash({
@@ -104,6 +104,7 @@ export default class Repository {
     });
     return git.commitHash({
       treeHash,
+      message,
       committer: this.committer,
       author: this.author
     });
@@ -128,10 +129,11 @@ export default class Repository {
 
   // Brief: Put provided bytes and mimeType in a deduplicated commit
   // Params: bytes <Uint8Array>
+  // Params: optional, { message: <String> }, commit message, if any
   // Params: optional, { encrypt: <Boolean> }, to disable encryption on a case-by-case basis
   // Returns: hex <string> commit hash
   // Ref: https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#create-or-update-file-contents
-  async commitBytes (bytes, { encrypt = true } = {}) {
+  async commitBytes (bytes, { message = '', encrypt = true } = {}) {
     // First, check if the desired commit already exists using GitHub REST API
     const commitHash = await this.bytesToCommitHash(bytes, { encrypt });
     if (await this.hasCommit(commitHash)) return commitHash; // Hooray!
@@ -167,7 +169,7 @@ export default class Repository {
       ]
     }).then((response) => response.data.sha);
     return await this.request('POST /repos/{owner}/{repo}/git/commits', {
-      message: '',
+      message,
       tree: treeHash,
       author: this.author,
       committer: this.committer
