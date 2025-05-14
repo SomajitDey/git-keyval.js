@@ -221,6 +221,25 @@ export default class Repository {
       });
   }
 
+  // Brief: Fetch bytes content for the given blob.
+  // Params: blobHash <string>
+  // Params: optional, { decrypt: <Boolean> }, to disable encryption on a case-by-case basis
+  // Returns: bytes <Uint8Array> | undefined (if fails)
+  async fetchBlobContent (blobHash, { decrypt = true } = {}) {
+    return this.request('GET /repos/{owner}/{repo}/git/blobs/{blobHash}', {
+      blobHash
+    })
+      .then((response) => base64ToBytes(response.data.content))
+      .catch((err) => {
+        if (err.status === 404) return;
+        throw err;
+      })
+      .then((bytes) => {
+        if (decrypt) return this.decrypt(bytes);
+        return bytes;
+      });
+  }
+
   // Brief: Fetch bytes content for the given commit.
   // Params: commitHash <string>
   // Params: optional, { decrypt: <Boolean> }, to disable encryption on a case-by-case basis
@@ -236,14 +255,11 @@ export default class Repository {
         ref: commitHash
       })
         .then((response) => response.data.sha)
-        .then((blobHash) => this.request('GET /repos/{owner}/{repo}/git/blobs/{blobHash}', {
-          blobHash
-        }))
-        .then((response) => base64ToBytes(response.data.content))
-        .then((bytes) => {
-          if (decrypt) return this.decrypt(bytes);
-          return bytes;
-        });
+        .catch((err) => {
+          if (err.status === 404) return;
+          throw err;
+        })
+        .then((blobHash) => this.fetchBlobContent(blobHash, { decrypt }));
     }
 
     // For public repositories fetch from a CDN. Tries multiple CDNs as fail-safe
@@ -268,12 +284,14 @@ export default class Repository {
       } catch (err) {
         if (err.message === '404') {
         // If 404 for one CDN, no use trying other CDNs as commit might not exist in GitHub origin
-          throw new Error('Commit not found');
+          return;
         } else {
           continue; // Try other CDNs in case current CDN is down
         }
       }
     }
+    // Would never reach the following if any CDN worked in the above loop
+    throw new Error('Unexpected failure with CDNs');
   }
 
   // Brief: Returns CDN URLs for viewing content for the provided commit

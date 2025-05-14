@@ -34,6 +34,14 @@ describe('Testing github', () => {
     assert.equal(await repository.hasCommit(typesToCommitHash.get('Blob')), true);
   });
 
+  it('fetchCommitContent and fetchBlobContent return undefined if object is non-existent',
+    async () => {
+      const randomHash = '3ac5ed658d05ac06b6584af5a4fa8fd7784c2119';
+      assert.equal(await repository.fetchBlobContent(randomHash), undefined);
+      assert.equal(await repository.fetchCommitContent(randomHash), undefined);
+    }
+  );  
+  
   it('commitBytes, bytesToCommitHash, fetchCommitContent, cdnLinks, updateRefs and branchToCommitHash', async () => {
     const bytes = crypto.getRandomValues(new Uint8Array(14));
     const commitHash = await repository.commitBytes(bytes);
