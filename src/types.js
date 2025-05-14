@@ -22,7 +22,8 @@ export function getType (input) {
 // Params: <boolean | string | number | array | object | ArrayBuffer | Uint8Array | blob>
 // Returns: {
 //    bytes: <Uint8Array>,
-//    type: 'Number' | 'Boolean' | 'String' | 'JSON' | 'ArrayBuffer' | 'Blob' | undefined
+//    type: 'Number' | 'Boolean' | 'String' | 'JSON' | 'ArrayBuffer' | 'Blob' | undefined,
+//    mimeType: <String>
 //  }
 export async function typedToBytes (input) {
   // Below we use fall-through a lot! Use of 'return' implies 'break'
@@ -45,14 +46,7 @@ export async function typedToBytes (input) {
     case 'Blob':
       // Using .arrayBuffer() instead of .bytes() because the latter isn't universally supported
       const blobBytes = new Uint8Array(await input.arrayBuffer());
-      const mimeType = input.type;
-      const offset = mimeType.length + 1;
-      const bytes = await conversions.concatBytes([
-        new Uint8Array([offset]),
-        conversions.textToBytes(mimeType),
-        blobBytes
-      ]);
-      return { type, bytes };
+      return { type, mimeType: input.type, bytes: blobBytes };
     case 'Uint8Array':
       return { bytes: input };
     case 'ArrayBuffer':
@@ -64,7 +58,7 @@ export async function typedToBytes (input) {
 
 // Brief: Inverse of typedToBytes()
 // Params: { type: <string>, bytes: <Uint8Array> }
-export function bytesToTyped ({ type, bytes }) {
+export function bytesToTyped ({ type = 'Uint8Array', mimeType, bytes }) {
   switch (type) {
     case 'Number':
       if (bytes.length === 8) return conversions.bytesToNum(bytes);
@@ -76,12 +70,10 @@ export function bytesToTyped ({ type, bytes }) {
     case 'JSON':
       return JSON.parse(conversions.bytesToText(bytes));
     case 'Blob':
-      const offset = bytes[0];
-      const mimeType = conversions.bytesToText(bytes.slice(1, offset));
-      return new Blob([bytes.slice(offset)], { type: mimeType });
+      return new Blob([ bytes ], { type: mimeType });
     case 'ArrayBuffer':
       return bytes.buffer;
-    case undefined:
+    case 'Uint8Array':
       return bytes;
     default:
       throw new Error('Unsupported type');
