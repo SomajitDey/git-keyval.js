@@ -52,6 +52,10 @@ describe('Testing database', () => {
     assert.rejects(kv.increment(key, -4), { message: 'Old value must be a Number' });
     assert.rejects(kv.toggle(key), { message: 'Old value must be a Boolean' });
 
+    const blob = new Blob(['hello', 'world'], { type: 'custom/mime' });
+    await kv.create(key, blob, { overwrite: true });
+    assert.deepStrictEqual(await kv.read(key), blob);
+
     await kv.create(key, 3, { overwrite: true });
     await kv.increment(key, -4);
     assert.deepStrictEqual(await kv.read(key), -1);

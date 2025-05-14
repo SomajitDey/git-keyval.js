@@ -296,6 +296,22 @@ export default class Repository {
     throw new Error('Unexpected failure with CDNs');
   }
 
+  // Params: commitHash <string>
+  // Returns: <String> | undefined, if commit doesn't exist
+  async fetchCommitMessage (commitHash) {
+    return this.request('HEAD /repos/{owner}/{repo}/git/commits/{ref}', {
+      ref: commitHash
+    })
+      .then((response) => response.data.message)
+      .catch((err) => {
+        if (err.status === 404) {
+          return;
+        } else {
+          throw err;
+        }
+      });
+  }
+
   // Brief: Returns CDN URLs for viewing content for the provided commit
   // Params: commitHash <string>
   cdnLinks (commitHash) {
