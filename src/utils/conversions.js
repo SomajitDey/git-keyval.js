@@ -2,6 +2,8 @@
 
 import { fromUint8Array, toUint8Array as base64ToBytes } from 'js-base64';
 
+// Params: base64ToBytes(encodedString) where encodedString is a base64 encoded string
+//  that may optionally contain whitespace characters (e.g. new line and space)
 export { base64ToBytes };
 
 export function bytesToBase64 (bytes) {

@@ -4,8 +4,12 @@ import assert from 'assert';
 describe('Testing utils/conversions', () => {
   describe('bytesToBase64 and base64ToBytes', () => {
     it('convert to and fro, and number of bytes', () => {
-      const base64 = 'AbC+'; // Must be n*8 bit, so we chose 4*6 = 3*8 bit
-      assert.equal(conversions.bytesToBase64(conversions.base64ToBytes(base64)), base64);
+      // Note: The following base64 contains optional whitespace (space and new line)
+      const base64 = 'AbC\n +'; // Must be n*8 bit, so we chose 4*6 = 3*8 bit
+      assert.equal(
+        conversions.bytesToBase64(conversions.base64ToBytes(base64)),
+        base64.replace(/\s/g, '') // Remove all whitespace
+      );
       assert.equal(conversions.base64ToBytes(base64).length, 3);
     });
   });
