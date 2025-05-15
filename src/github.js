@@ -41,6 +41,8 @@ export default class Repository {
     return bytes;
   }
 
+  encrypted = false;
+  
   // Await this static method to get a class instance
   // Params: Same as that of constructor() below
   static async instantiate (obj) {
@@ -55,6 +57,7 @@ export default class Repository {
     this.authenticated = Boolean(auth);
     if (encrypt) this.encrypt = encrypt;
     if (decrypt) this.decrypt = decrypt;
+    if (encrypt || decrypt) this.encrypted = true;
 
     this.request = request.defaults({
       owner,
@@ -94,7 +97,7 @@ export default class Repository {
   }
 
   // Brief: Same as commitBytes() below but without actually uploading anything
-  async bytesToCommitHash (bytes, { message, encrypt = true } = {}) {
+  async bytesToCommitHash (bytes, { message, encrypt = this.encrypted } = {}) {
     const cipher = encrypt ? await this.encrypt(bytes) : bytes;
     const blobHash = await git.blobHash(cipher);
     const treeHash = await git.treeHash({
@@ -133,7 +136,7 @@ export default class Repository {
   // Params: optional, { encrypt: <Boolean> }, to disable encryption on a case-by-case basis
   // Returns: hex <string> commit hash
   // Ref: https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#create-or-update-file-contents
-  async commitBytes (bytes, { message = '', encrypt = true } = {}) {
+  async commitBytes (bytes, { message = '', encrypt = this.encrypted } = {}) {
     // First, check if the desired commit already exists using GitHub REST API
     const commitHash = await this.bytesToCommitHash(bytes, { encrypt });
     if (await this.hasCommit(commitHash)) return commitHash; // Hooray!
@@ -227,7 +230,7 @@ export default class Repository {
   // Params: blobHash <string>
   // Params: optional, { decrypt: <Boolean> }, to disable encryption on a case-by-case basis
   // Returns: bytes <Uint8Array> | undefined (if fails)
-  async fetchBlobContent (blobHash, { decrypt = true } = {}) {
+  async fetchBlobContent (blobHash, { decrypt = this.encrypted } = {}) {
     return this.request('GET /repos/{owner}/{repo}/git/blobs/{blobHash}', {
       blobHash
     })
@@ -246,7 +249,7 @@ export default class Repository {
   // Params: commitHash <string>
   // Params: optional, { decrypt: <Boolean> }, to disable encryption on a case-by-case basis
   // Returns: bytes <Uint8Array> | undefined (if fails)
-  async fetchCommitContent (commitHash, { decrypt = true } = {}) {
+  async fetchCommitContent (commitHash, { decrypt = this.encrypted } = {}) {
     // For private repositories fetch from GitHub REST API
     // REST API for repo contents gives anomalous base64 encoding for arbitrary bytes content.
     // Instead, therefore, we take the blob hash from the API for repo contents.
@@ -315,7 +318,8 @@ export default class Repository {
   // Brief: Returns CDN URLs for viewing content for the provided commit
   // Params: commitHash <string>
   cdnLinks (commitHash) {
-    if (!this.isPublic) return {}; // CDN doesn't exist for private repos
+    // CDN doesn't exist for private or encrypted repos
+    if (!this.isPublic || this.encrypted) return {};
     const cdnBaseUrl = `https://cdn.jsdelivr.net/gh/${this.owner}/${this.name}@${commitHash}`;
     return {
       'octet-stream': cdnBaseUrl + '/value',
