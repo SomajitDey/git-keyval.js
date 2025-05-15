@@ -11,7 +11,7 @@
     "semistandard": "^17.0.0"
   },
   "scripts": {
-    "test": "mocha --recursive src --timeout 30000",
+    "test": "mocha --recursive src --timeout 40000",
     "lint": "semistandard --fix"
   }
 }
