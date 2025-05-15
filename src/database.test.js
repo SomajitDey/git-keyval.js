@@ -65,6 +65,7 @@ describe('Testing database', () => {
     assert.deepStrictEqual(await kv.read(key), true);
 
     await kv.delete([key]);
+    assert.deepStrictEqual(await kv.has(key), false);
     assert.deepStrictEqual(await kv.read(key), undefined);
   });
 });

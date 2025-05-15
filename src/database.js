@@ -64,56 +64,10 @@ export default class Database {
     }
   }
 
-  async valCommitHash (key) {
+  async has (key) {
     const { uuid } = await this.keyToUuid(key);
     const bytesBranch = `kv/${uuid}/value/bytes`;
-    const typeBranch = `kv/${uuid}/value/type`;
-
-    let valBytesCommitHash, valTypeCommitHash;
-
-    if (this.repository.authenticated) {
-      // GraphQL consumes only one ratelimit point for querying two branches!
-      const { bytes, type } = await this.repository.graphql(
-        `
-          query($id: ID!, $bytesBranch: String!, $typeBranch: String!) {
-            node(id: $id) {
-              ... on Repository {
-                bytes: ref(qualifiedName: $bytesBranch) {
-                  target {
-                    oid
-                  }
-                }
-                type:ref(qualifiedName: $typeBranch) {
-                  target {
-                    oid
-                  }
-                }
-              }
-            }
-          }
-        `,
-        {
-          id: this.repository.id,
-          bytesBranch: `refs/heads/${bytesBranch}`,
-          typeBranch: `refs/heads/${typeBranch}`
-        }
-      )
-        .then((response) => response.node);
-
-      valBytesCommitHash = bytes?.target?.oid;
-      valTypeCommitHash = type?.target?.oid;
-    } else {
-      [valBytesCommitHash, valTypeCommitHash] = await Promise.all([
-        this.repository.branchToCommitHash(bytesBranch),
-        this.repository.branchToCommitHash(typeBranch)
-      ]);
-    }
-
-    return { bytes: valBytesCommitHash, type: valTypeCommitHash };
-  }
-
-  async has (key) {
-    const { bytes: valBytesCommitHash } = await this.valCommitHash(key);
+    const valBytesCommitHash = await this.repository.branchToCommitHash(bytesBranch);
     return valBytesCommitHash !== undefined;
   }
 
