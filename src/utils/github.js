@@ -110,7 +110,7 @@ export default class Repository {
     author = this.author,
     committer = this.committer,
     parentCommitHashes = [],
-    push = 'true'
+    push = true
   } = {}
   ) {
     // First, check if the desired commit already exists using GitHub REST API
