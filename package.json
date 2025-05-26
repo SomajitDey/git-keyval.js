@@ -3,7 +3,8 @@
   "dependencies": {
     "@octokit/graphql": "^8.2.2",
     "@octokit/request": "^9.2.3",
-    "js-base64": "^3.7.7"
+    "js-base64": "^3.7.7",
+    "mime-db-lite": "^2.1.0"
   },
   "devDependencies": {
     "dotenv": "^16.5.0",

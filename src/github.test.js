@@ -45,11 +45,11 @@ describe('Testing github', () => {
   it('commitBytes, bytesToCommitHash, fetchCommitContent, cdnLinks, updateRefs and branchToCommitHash', async () => {
     const bytes = crypto.getRandomValues(new Uint8Array(14));
     const commitHash = await repository.commitBytes(bytes);
-    assert.equal(await repository.bytesToCommitHash(bytes), commitHash);
+    assert.equal(await repository.commitBytes(bytes, { push: false }), commitHash);
     assert.deepStrictEqual(await repository.fetchCommitContent(commitHash), bytes);
-    const { 'octet-stream': cdnLinkBinary } = repository.cdnLinks(commitHash);
-    if (cdnLinkBinary) {
-      assert.deepStrictEqual(await fetch(cdnLinkBinary).then((res) => res.bytes()), bytes);
+    const [ cdnLink ] = repository.cdnLinks(commitHash);
+    if (cdnLink) {
+      assert.deepStrictEqual(await fetch(cdnLink).then((res) => res.bytes()), bytes);
     }
     const branch = 'test/target/' + commitHash;
     await repository.updateRefs([{ afterOid: commitHash, name: branch }]);
