@@ -1,8 +1,25 @@
 // Brief: Key-Value Database hosted as a GitHub Repo
 
 import * as types from './types.js';
-import Repository from './github.js';
+import Repository from './utils/github.js';
 import { hexToBase64Url, base64ToHex } from './utils/conversions.js';
+
+const defaultPaths = [ 'bytes', 'view.txt', 'view.json' ];
+
+function encodeCommitMsg ({ mimeType, extension } = {}) {
+  if (mimeType && extension) {
+    return `${mimeType};extension=${extension}`;
+  } else {
+    return mimeType ?? '';
+  }
+}
+
+function decodeCommitMsg (message) {
+  if (!message) return {};
+  const [ mimeType, rest ] = message.split(';');
+  const extension = rest?.split('=').pop();
+  return { mimeType, extension };
+}
 
 export default class Database {
   repository;
@@ -11,6 +28,18 @@ export default class Database {
   // Params: Same as that of Repository.constructor() in ./github.js
   static async instantiate (obj) {
     const repository = await Repository.instantiate(obj);
+    await repository.request('GET /repos/{owner}/{repo}/git/ref/{ref}', {
+        ref: 'tags/kv/types/ArrayBuffer'
+      })
+        .then((response) => {
+          if (
+            response.data.object.sha !== types.typesToCommitHash.get('ArrayBuffer')
+          ) throw new Error('Mismatched');
+        })
+        .catch((err) => {
+          if (err.status === 404 || err.message === 'Mismatched') { throw new Error('Run init workflow in the GitHub repo first!'); }
+          throw err;
+        })
     return new Database(repository);
   }
 
@@ -20,35 +49,35 @@ export default class Database {
   }
 
   async keyToUuid (key, { push = false } = {}) {
-    const { type, mimeType, bytes } = await types.typedToBytes(key);
-    let commitHash;
-    if (push) {
-      commitHash = await this.repository.commitBytes(bytes, { message: mimeType });
-    } else {
-      commitHash = await this.repository.bytesToCommitHash(bytes, { message: mimeType });
-    }
+    const { type, mimeType, bytes, extension } = await types.typedToBytes(key);
+    const paths = [ ...defaultPaths, `view.${extension}`];
+    const message = encodeCommitMsg({ mimeType, extension });
+    const commitHash = await this.repository.commitBytes(bytes, { message, paths, push });
     return { uuid: `${type}/${hexToBase64Url(commitHash)}`, type, commitHash };
   }
 
   async uuidToKey (uuid) {
     const [type, base64CommitHash] = uuid.split('/');
     const commitHash = base64ToHex(base64CommitHash);
-    const [ bytes, mimeType ] = await Promise.all([
+    const [ bytes, commitMessage ] = await Promise.all([
       this.repository.fetchCommitContent(commitHash),
-      type === 'Blob'? this.repository.fetchCommitMessage(commitHash) : undefined
+      type === 'Blob'? this.repository.fetchCommitMessage(commitHash) : ''
     ]);
+    const { mimeType } = decodeCommitMsg(commitMessage);
     return types.bytesToTyped({ type, mimeType, bytes });
   }
 
   async create (key, val, { overwrite = false } = {}) {
-    const { type: valType, mimeType, bytes: valBytes } = await types.typedToBytes(val);
+    const { type: valType, mimeType, bytes: valBytes, extension } = await types.typedToBytes(val);
+    const paths = [ ...defaultPaths, `view.${extension}`];
+    const commitMsg = encodeCommitMsg({ mimeType, extension });
     // Using Promise.all to parallelize network IO
     const [
       { uuid, commitHash: keyCommitHash },
       valBytesCommitHash
     ] = await Promise.all([
       this.keyToUuid(key, { push: true }),
-      this.repository.commitBytes(valBytes, { message: mimeType })
+      this.repository.commitBytes(valBytes, { message: commitMsg, paths })
     ]);
     const beforeOid = overwrite ? undefined : '0000000000000000000000000000000000000000';
     try {
@@ -57,7 +86,8 @@ export default class Database {
         { afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
         { afterOid: types.typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
       ]);
-      return { uuid, ...this.repository.cdnLinks(valBytesCommitHash) };
+      const viewPath = extension ? `view.${extension}` : `bytes`;
+      return { uuid, cdnLinks: this.repository.cdnLinks(valBytesCommitHash, viewPath) };
     } catch (err) {
       if (!overwrite && await this.has(key)) throw new Error('Key exists');
       throw err;
@@ -109,7 +139,7 @@ export default class Database {
           id: this.repository.id,
           bytesBranch: `refs/heads/${bytesBranch}`,
           typeBranch: `refs/heads/${typeBranch}`,
-          path: 'value'
+          path: 'bytes'
         }
       )
         .then((response) => response.node);
@@ -132,7 +162,7 @@ export default class Database {
     if (valType === 'Blob' && valBytesCommitMessage === undefined) {
       valBytesCommitMessage = await this.repository.fetchCommitMessage(valBytesCommitHash);
     }
-    const mimeType = valBytesCommitMessage ? valBytesCommitMessage : undefined;
+    const mimeType = valBytesCommitMessage ? valBytesCommitMessage.split(';')[0] : undefined;
 
     let valBytes;
     // Compare fetchCommitContent() in ./github.js
@@ -166,18 +196,21 @@ export default class Database {
       this.keyToUuid(oldValClone),
       modifier(oldVal)
     ]);
-    const { type: valType, bytes: valBytes } = await types.typedToBytes(val);
-    const valBytesCommitHash = await this.repository.commitBytes(valBytes);
+    const { type: valType, mimeType, bytes: valBytes, extension } = await types.typedToBytes(val);
+    const paths = [ ...defaultPaths, `view.${extension}`];
+    const commitMsg = encodeCommitMsg({ mimeType, extension });
+    const valBytesCommitHash = await this.repository.commitBytes(valBytes, { message: commitMsg, paths});
     const { uuid } = await this.keyToUuid(key);
     return this.repository.updateRefs([
       { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
       { afterOid: types.typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
     ])
       .then(() => {
+        const viewPath = extension ? `view.${extension}` : `bytes`;
         return {
           oldValue: oldValClone,
           currentValue: val,
-          cdnLinks: this.repository.cdnLinks(valBytesCommitHash)
+          cdnLinks: this.repository.cdnLinks(valBytesCommitHash, viewPath)
         };
       })
       .catch((err) => {

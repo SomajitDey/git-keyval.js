@@ -6,9 +6,9 @@
 
 import { request } from '@octokit/request';
 import { withCustomRequest } from '@octokit/graphql';
-import * as git from './utils/git-hash.js';
-import { bytesToBase64, base64ToBytes } from './utils/conversions.js';
-import { typesToCommitHash } from './types.js';
+import * as git from './git-hash.js';
+import { bytesToBase64, base64ToBytes } from './conversions.js';
+import { typesToCommitHash } from '../types.js';
 
 export default class Repository {
   // Declaring properties to be initialized by constructor() or init()
@@ -71,22 +71,8 @@ export default class Repository {
   // Brief: Fetch repository info from GitHub API
   async init () {
   // Using REST API instead of GraphQL to support unauthenticated reads
-    const [{ node_id, visibility, created_at }] = await Promise.all([
-      this.request('GET /repos/{owner}/{repo}')
-        .then((response) => response.data),
-      this.request('GET /repos/{owner}/{repo}/git/ref/{ref}', {
-        ref: 'tags/kv/types/ArrayBuffer'
-      })
-        .then((response) => {
-          if (
-            response.data.object.sha !== typesToCommitHash.get('ArrayBuffer')
-          ) throw new Error('Mismatched');
-        })
-        .catch((err) => {
-          if (err.status === 404 || err.message === 'Mismatched') { throw new Error('Run init workflow in the GitHub repo first!'); }
-          throw err;
-        })
-    ]);
+    const { node_id, visibility, created_at } = await this.request('GET /repos/{owner}/{repo}')
+      .then((response) => response.data);
 
     this.id = node_id;
     this.isPublic = visibility === 'public';
@@ -311,8 +297,8 @@ export default class Repository {
         'Pass proper path parameter'
       );
     }
-    // CDN doesn't exist for private or encrypted repos
-    if (!this.isPublic || this.encrypted) return;
+    // CDN doesn't exist for private repos
+    if (!this.isPublic) return;
     const user = this.owner;
     const repo = this.name;
     return [

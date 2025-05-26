@@ -1,5 +1,8 @@
 import * as conversions from './utils/conversions.js';
 import Ambimap from './utils/ambimap.js';
+import MimeDb from 'mime-db-lite';
+
+const mimeDb = new MimeDb({ cacheMaxEntries: 32 });
 
 export const typesToCommitHash = new Ambimap([
   ['Number', '14f91166da82bb4c61d208ac02c492355e8d2cc2'],
@@ -23,7 +26,8 @@ export function getType (input) {
 // Returns: {
 //    bytes: <Uint8Array>,
 //    type: 'Number' | 'Boolean' | 'String' | 'JSON' | 'ArrayBuffer' | 'Blob' | undefined,
-//    mimeType: <String>
+//    mimeType: <String>,
+//    extension: <String>
 //  }
 export async function typedToBytes (input) {
   // Below we use fall-through a lot! Use of 'return' implies 'break'
@@ -38,15 +42,18 @@ export async function typedToBytes (input) {
       }
     case 'Boolean':
     case 'String':
-      return { type, bytes: conversions.textToBytes(input.toString()) };
+      return { type, bytes: conversions.textToBytes(input.toString()), extension: 'txt' };
     case 'Null':
     case 'Array':
     case 'Object':
-      return { type: 'JSON', bytes: conversions.textToBytes(JSON.stringify(input)) };
+      return { type: 'JSON', bytes: conversions.textToBytes(JSON.stringify(input)), extension: 'json' };
     case 'Blob':
       // Using .arrayBuffer() instead of .bytes() because the latter isn't universally supported
       const blobBytes = new Uint8Array(await input.arrayBuffer());
-      return { type, mimeType: input.type, bytes: blobBytes };
+      const mimeType = input.type;
+      const [ extension ] = await mimeDb.getExtensions(mimeType).catch(() => []);
+      // ext is undefined in case of error on the above RHS
+      return { type, mimeType, bytes: blobBytes, extension };
     case 'Uint8Array':
       return { bytes: input };
     case 'ArrayBuffer':
