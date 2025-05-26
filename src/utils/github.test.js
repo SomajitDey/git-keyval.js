@@ -30,7 +30,7 @@ describe('Testing github', () => {
   });
 
   it('hasCommit', async () => {
-    //assert.equal(await repository.hasCommit(typesToCommitHash.get('Blob')), true);
+    // assert.equal(await repository.hasCommit(typesToCommitHash.get('Blob')), true);
   });
 
   it('fetchCommitContent and fetchBlobContent return undefined if object is non-existent',
@@ -39,14 +39,14 @@ describe('Testing github', () => {
       assert.equal(await repository.fetchBlobContent(randomHash), undefined);
       assert.equal(await repository.fetchCommitContent(randomHash), undefined);
     }
-  );  
-  
+  );
+
   it('commitBytes, bytesToCommitHash, fetchCommitContent, cdnLinks, updateRefs and branchToCommitHash', async () => {
     const bytes = crypto.getRandomValues(new Uint8Array(14));
     const commitHash = await repository.commitBytes(bytes);
     assert.equal(await repository.commitBytes(bytes, { push: false }), commitHash);
     assert.deepStrictEqual(await repository.fetchCommitContent(commitHash), bytes);
-    const [ cdnLink ] = repository.cdnLinks(commitHash);
+    const [cdnLink] = repository.cdnLinks(commitHash);
     if (cdnLink) {
       assert.deepStrictEqual(await fetch(cdnLink).then((res) => res.bytes()), bytes);
     }

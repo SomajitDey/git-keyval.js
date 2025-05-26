@@ -10,7 +10,7 @@ export const types = [
   'JSON',
   'Blob',
   'ArrayBuffer'
-]
+];
 
 // Brief: Return the type of input
 // Params: Any javascript value!
@@ -48,7 +48,7 @@ export async function typedToBytes (input) {
       // Using .arrayBuffer() instead of .bytes() because the latter isn't universally supported
       const blobBytes = new Uint8Array(await input.arrayBuffer());
       const mimeType = input.type;
-      const [ extension ] = await mimeDb.getExtensions(mimeType).catch(() => []);
+      const [extension] = await mimeDb.getExtensions(mimeType).catch(() => []);
       // ext is undefined in case of error on the above RHS
       return { type, mimeType, bytes: blobBytes, extension };
     case 'Uint8Array':
@@ -74,7 +74,7 @@ export function bytesToTyped ({ type = 'Uint8Array', mimeType, bytes }) {
     case 'JSON':
       return JSON.parse(conversions.bytesToText(bytes));
     case 'Blob':
-      return new Blob([ bytes ], { type: mimeType });
+      return new Blob([bytes], { type: mimeType });
     case 'ArrayBuffer':
       return bytes.buffer;
     case 'Uint8Array':

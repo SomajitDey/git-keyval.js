@@ -5,7 +5,7 @@ import Ambimap from './utils/ambimap.js';
 import Repository from './utils/github.js';
 import { hexToBase64Url, base64ToHex } from './utils/conversions.js';
 
-const defaultPaths = [ 'bytes', 'view.txt', 'view.json' ];
+const defaultPaths = ['bytes', 'view.txt', 'view.json'];
 
 const typesToCommitHash = new Ambimap();
 const commitHashToTypes = typesToCommitHash.inv;
@@ -20,7 +20,7 @@ function encodeCommitMsg ({ mimeType, extension } = {}) {
 
 function decodeCommitMsg (message) {
   if (!message) return {};
-  const [ mimeType, rest ] = message.split(';');
+  const [mimeType, rest] = message.split(';');
   const extension = rest?.split('=').pop();
   return { mimeType, extension };
 }
@@ -28,49 +28,36 @@ function decodeCommitMsg (message) {
 export default class Database {
   repository;
 
-async commitTyped (input, { encrypt, push }={}) {
-  const { type, mimeType, bytes, extension } = await types.typedToBytes(input);
-  const paths = [ ...defaultPaths ];
-  if (mimeType && extension) paths.push(`view.${extension}`);
-  const message = encodeCommitMsg({ mimeType, extension });
-  const commitHash = await this.repository.commitBytes(bytes, { message, paths, encrypt, push });
-  const viewPath = extension ? `view.${extension}` : `bytes`;
-  return { commitHash, type, viewPath };
-}
+  async commitTyped (input, { encrypt, push } = {}) {
+    const { type, mimeType, bytes, extension } = await types.typedToBytes(input);
+    const paths = [...defaultPaths];
+    if (mimeType && extension) paths.push(`view.${extension}`);
+    const message = encodeCommitMsg({ mimeType, extension });
+    const commitHash = await this.repository.commitBytes(bytes, { message, paths, encrypt, push });
+    const viewPath = extension ? `view.${extension}` : 'bytes';
+    return { commitHash, type, viewPath };
+  }
 
-async init () {
+  async init () {
     const refUpdates = [];
     for (const type of types.types) {
       const { commitHash } = await this.commitTyped(type, { encrypt: false });
       refUpdates.push({ afterOid: commitHash, name: `refs/tags/kv/types/${type}` });
     }
     await this.repository.updateRefs(refUpdates);
-}
+  }
 
   // Await this static method to get a class instance
   // Params: Same as that of Repository.constructor() in ./github.js
   static async instantiate (obj) {
     const repository = await Repository.instantiate(obj);
-    const instance =  new Database(repository);
-    //await instance.init();
+    const instance = new Database(repository);
     if (typesToCommitHash.size === 0) {
-    for (const type of types.types) {
-      const { commitHash } = await instance.commitTyped(type, { encrypt: false, push: false });
-      typesToCommitHash.set(type, commitHash);
+      for (const type of types.types) {
+        const { commitHash } = await instance.commitTyped(type, { encrypt: false, push: false });
+        typesToCommitHash.set(type, commitHash);
+      }
     }
-    }
-    await repository.request('GET /repos/{owner}/{repo}/git/ref/{ref}', {
-        ref: 'tags/kv/types/ArrayBuffer'
-      })
-        .then((response) => {
-          if (
-            response.data.object.sha !== typesToCommitHash.get('ArrayBuffer')
-          ) throw new Error('Mismatched');
-        })
-        .catch((err) => {
-          if (err.status === 404 || err.message === 'Mismatched') { throw new Error('Run init workflow in the GitHub repo first!'); }
-          throw err;
-        })
     return instance;
   }
 
@@ -87,9 +74,9 @@ async init () {
   async uuidToKey (uuid) {
     const [type, base64CommitHash] = uuid.split('/');
     const commitHash = base64ToHex(base64CommitHash);
-    const [ bytes, commitMessage ] = await Promise.all([
+    const [bytes, commitMessage] = await Promise.all([
       this.repository.fetchCommitContent(commitHash),
-      type === 'Blob'? this.repository.fetchCommitMessage(commitHash) : ''
+      type === 'Blob' ? this.repository.fetchCommitMessage(commitHash) : ''
     ]);
     const { mimeType } = decodeCommitMsg(commitMessage);
     return types.bytesToTyped({ type, mimeType, bytes });
@@ -170,9 +157,8 @@ async init () {
 
       valBytesCommitHash = bytes?.target?.oid;
       valBytesCommitMessage = bytes?.target?.message;
-      valBytesBlobHash =  bytes?.target?.file?.oid;
+      valBytesBlobHash = bytes?.target?.file?.oid;
       valTypeCommitHash = type?.target?.oid;
-
     } else {
       [valBytesCommitHash, valTypeCommitHash] = await Promise.all([
         this.repository.branchToCommitHash(bytesBranch),
@@ -222,18 +208,18 @@ async init () {
     ]);
     const { commitHash: valBytesCommitHash, type: valType, viewPath: valViewPath } = await this.commitTyped(val);
     const { uuid } = await this.keyToUuid(key);
-    return this.repository.updateRefs([
+    await this.repository.updateRefs([
       { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
       { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
-    ]).catch((err) => {
-        new Error('Update failed');
-      });
+    ]).catch(() => {
+      throw new Error('Update failed');
+    });
 
     return {
-          oldValue: oldValClone,
-          currentValue: val,
-          cdnLinks: this.repository.cdnLinks(valBytesCommitHash, valViewPath)
-        };
+      oldValue: oldValClone,
+      currentValue: val,
+      cdnLinks: this.repository.cdnLinks(valBytesCommitHash, valViewPath)
+    };
   }
 
   async increment (key, incr = 1) {
