@@ -36,7 +36,7 @@ export default class Repository {
   // Params: Same as that of constructor() below
   static async instantiate (obj) {
     const instance = new Repository(obj);
-    await instance.init();
+    await instance.#init();
     return instance;
   }
 
@@ -68,7 +68,7 @@ export default class Repository {
   }
 
   // Brief: Fetch repository info from GitHub API
-  async init () {
+  async #init () {
   // Using REST API instead of GraphQL to support unauthenticated reads
     const { node_id, visibility, created_at } = await this.request('GET /repos/{owner}/{repo}')
       .then((response) => response.data);

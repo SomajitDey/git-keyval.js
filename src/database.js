@@ -32,6 +32,8 @@ export default class Database {
     const { type, mimeType, bytes, extension } = await types.typedToBytes(input);
     const paths = [...defaultPaths];
     if (mimeType && extension) paths.push(`view.${extension}`);
+    // If extension is undefined, but mimeType exists, `paths` is same as `defaultPaths`.
+    // Ensures git-tree object reuse between commits that differ only in commit-message(s).
     const message = encodeCommitMsg({ mimeType, extension });
     const commitHash = await this.repository.commitBytes(bytes, { message, paths, encrypt, push });
     const viewPath = extension ? `view.${extension}` : 'bytes';
