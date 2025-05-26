@@ -1,10 +1,14 @@
 // Brief: Key-Value Database hosted as a GitHub Repo
 
 import * as types from './types.js';
+import Ambimap from './utils/ambimap.js';
 import Repository from './utils/github.js';
 import { hexToBase64Url, base64ToHex } from './utils/conversions.js';
 
 const defaultPaths = [ 'bytes', 'view.txt', 'view.json' ];
+
+const typesToCommitHash = new Ambimap();
+const commitHashToTypes = typesToCommitHash.inv;
 
 function encodeCommitMsg ({ mimeType, extension } = {}) {
   if (mimeType && extension) {
@@ -24,33 +28,50 @@ function decodeCommitMsg (message) {
 export default class Database {
   repository;
 
-async commitTyped (input, { push = true }={}) {
+async commitTyped (input, { encrypt, push }={}) {
   const { type, mimeType, bytes, extension } = await types.typedToBytes(input);
   const paths = [ ...defaultPaths ];
   if (mimeType && extension) paths.push(`view.${extension}`);
   const message = encodeCommitMsg({ mimeType, extension });
-  const commitHash = await this.repository.commitBytes(bytes, { message, paths, push });
+  const commitHash = await this.repository.commitBytes(bytes, { message, paths, encrypt, push });
   const viewPath = extension ? `view.${extension}` : `bytes`;
   return { commitHash, type, viewPath };
+}
+
+async init () {
+    const refUpdates = [];
+    for (const type of types.types) {
+      const { commitHash } = await this.commitTyped(type, { encrypt: false });
+      refUpdates.push({ afterOid: commitHash, name: `refs/tags/kv/types/${type}` });
+    }
+    await this.repository.updateRefs(refUpdates);
 }
 
   // Await this static method to get a class instance
   // Params: Same as that of Repository.constructor() in ./github.js
   static async instantiate (obj) {
     const repository = await Repository.instantiate(obj);
+    const instance =  new Database(repository);
+    //await instance.init();
+    if (typesToCommitHash.size === 0) {
+    for (const type of types.types) {
+      const { commitHash } = await instance.commitTyped(type, { encrypt: false, push: false });
+      typesToCommitHash.set(type, commitHash);
+    }
+    }
     await repository.request('GET /repos/{owner}/{repo}/git/ref/{ref}', {
         ref: 'tags/kv/types/ArrayBuffer'
       })
         .then((response) => {
           if (
-            response.data.object.sha !== types.typesToCommitHash.get('ArrayBuffer')
+            response.data.object.sha !== typesToCommitHash.get('ArrayBuffer')
           ) throw new Error('Mismatched');
         })
         .catch((err) => {
           if (err.status === 404 || err.message === 'Mismatched') { throw new Error('Run init workflow in the GitHub repo first!'); }
           throw err;
         })
-    return new Database(repository);
+    return instance;
   }
 
   // Params: repository <Repository>, instance of the Repository class exported by ./utils/github.js
@@ -88,7 +109,7 @@ async commitTyped (input, { push = true }={}) {
       await this.repository.updateRefs([
         { beforeOid, afterOid: keyCommitHash, name: `refs/tags/kv/${uuid}` },
         { afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
-        { afterOid: types.typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
+        { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
       ]);
       return { uuid, cdnLinks: this.repository.cdnLinks(valBytesCommitHash, valViewPath) };
     } catch (err) {
@@ -161,7 +182,7 @@ async commitTyped (input, { push = true }={}) {
 
     if (valBytesCommitHash === undefined) return;
 
-    const valType = types.commitHashToTypes.get(valTypeCommitHash);
+    const valType = commitHashToTypes.get(valTypeCommitHash);
     if (valType === 'Blob' && valBytesCommitMessage === undefined) {
       valBytesCommitMessage = await this.repository.fetchCommitMessage(valBytesCommitHash);
     }
@@ -203,7 +224,7 @@ async commitTyped (input, { push = true }={}) {
     const { uuid } = await this.keyToUuid(key);
     return this.repository.updateRefs([
       { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
-      { afterOid: types.typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
+      { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
     ]).catch((err) => {
         new Error('Update failed');
       });

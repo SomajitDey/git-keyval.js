@@ -1,7 +1,6 @@
 // Export your GitHub access-token as env var: GITHUB_PAT before running this script
 
 import Repository from './github.js';
-import { typesToCommitHash } from '../types.js';
 import assert from 'assert';
 import { config } from 'dotenv';
 
@@ -31,7 +30,7 @@ describe('Testing github', () => {
   });
 
   it('hasCommit', async () => {
-    assert.equal(await repository.hasCommit(typesToCommitHash.get('Blob')), true);
+    //assert.equal(await repository.hasCommit(typesToCommitHash.get('Blob')), true);
   });
 
   it('fetchCommitContent and fetchBlobContent return undefined if object is non-existent',

@@ -1,19 +1,16 @@
 import * as conversions from './utils/conversions.js';
-import Ambimap from './utils/ambimap.js';
 import MimeDb from 'mime-db-lite';
 
 const mimeDb = new MimeDb({ cacheMaxEntries: 32 });
 
-export const typesToCommitHash = new Ambimap([
-  ['Number', '14f91166da82bb4c61d208ac02c492355e8d2cc2'],
-  ['Boolean', '6e3272db79ec82e0caee4729c2b7f7e90e1900d8'],
-  ['String', '297f8811f388d4789333d7f2377519c145c4f874'],
-  ['JSON', 'f8f3eae1d21b150f5d020b65afd1cb6c07f11ab1'],
-  ['Blob', '844f74f26e3a8afe7ff86d5870f40d2a3b926d3a'],
-  ['ArrayBuffer', 'dcb0f2b8e11c35744b4cde31041517805fae7fed']
-]);
-
-export const commitHashToTypes = typesToCommitHash.inv;
+export const types = [
+  'Number',
+  'Boolean',
+  'String',
+  'JSON',
+  'Blob',
+  'ArrayBuffer'
+]
 
 // Brief: Return the type of input
 // Params: Any javascript value!

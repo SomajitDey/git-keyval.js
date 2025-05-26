@@ -8,7 +8,6 @@ import { request } from '@octokit/request';
 import { withCustomRequest } from '@octokit/graphql';
 import * as git from './git-hash.js';
 import { bytesToBase64, base64ToBytes } from './conversions.js';
-import { typesToCommitHash } from '../types.js';
 
 export default class Repository {
   // Declaring properties to be initialized by constructor() or init()
