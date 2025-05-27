@@ -76,11 +76,11 @@ export default class Database {
   async uuidToKey (uuid) {
     const [type, base64CommitHash] = uuid.split('/');
     const commitHash = base64ToHex(base64CommitHash);
-    const [bytes, commitMessage] = await Promise.all([
+    const [bytes, commitMsg] = await Promise.all([
       this.repository.fetchCommitContent(commitHash),
       type === 'Blob' ? this.repository.fetchCommitMessage(commitHash) : ''
     ]);
-    const { mimeType } = decodeCommitMsg(commitMessage);
+    const { mimeType } = decodeCommitMsg(commitMsg);
     return types.bytesToTyped({ type, mimeType, bytes });
   }
 
@@ -103,6 +103,9 @@ export default class Database {
       return { uuid, cdnLinks: this.repository.cdnLinks(valBytesCommitHash, valViewPath) };
     } catch (err) {
       if (!overwrite && await this.has(key)) throw new Error('Key exists');
+      if (await this.repository.hasCommit(typesToCommitHash.get(valType)) === false) {
+        throw new Error('Database not initialized. Run db.init()');
+      }
       throw err;
     }
   }
@@ -210,18 +213,23 @@ export default class Database {
     ]);
     const { commitHash: valBytesCommitHash, type: valType, viewPath: valViewPath } = await this.commitTyped(val);
     const { uuid } = await this.keyToUuid(key);
-    await this.repository.updateRefs([
-      { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
-      { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
-    ]).catch(() => {
-      throw new Error('Update failed');
-    });
+    try {
+      await this.repository.updateRefs([
+        { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
+        { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
+      ]);
 
-    return {
-      oldValue: oldValClone,
-      currentValue: val,
-      cdnLinks: this.repository.cdnLinks(valBytesCommitHash, valViewPath)
-    };
+      return {
+        oldValue: oldValClone,
+        currentValue: val,
+        cdnLinks: this.repository.cdnLinks(valBytesCommitHash, valViewPath)
+      };
+    } catch (error) {
+      if (await this.repository.hasCommit(typesToCommitHash.get(valType)) === false) {
+        throw new Error('Database not initialized. Run db.init()');
+      }
+      throw new Error('Update failed');
+    }
   }
 
   async increment (key, incr = 1) {
