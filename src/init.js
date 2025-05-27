@@ -1,19 +1,16 @@
 #!/usr/bin/env node
 // Brief: Initialise the given repo as database
-// Env: GITHUB_OWNER, to pass github user
-// Env: GITHUB_REPO, to pass repo name
-// Env: GITHUB_AUTH, to pass auth/access token
+// Arg: <owner>/<repo>, to pass github user/repo
+// Env: GH_TOKEN, to pass auth/access token
 
 import Database from './database.js';
-import { config } from 'dotenv';
 
-config(); // Sourcing .env
-const owner = process.env.GITHUB_OWNER;
-const repo = process.env.GITHUB_REPO;
-const auth = process.env.GITHUB_AUTH;
+const [ owner, repo ] = process.argv[2]?.split('/') ?? [];
+const auth = process.env.GH_TOKEN;
 if (Boolean(owner && repo && auth) === false) {
-  throw new Error('Pass GITHUB_OWNER, GITHUB_REPO and GITHUB_AUTH as env variables');
+  throw new Error('Pass <owner>/<repo> as arg and GH_TOKEN as env variable');
 }
 
 const db = await Database.instantiate({ owner, repo, auth });
 await db.init();
+console.log(`Initialised https://github.com/${owner}/${repo}`);
