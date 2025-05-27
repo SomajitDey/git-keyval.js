@@ -12,7 +12,7 @@
     "semistandard": "^17.0.0"
   },
   "scripts": {
-    "test": "mocha --recursive src --timeout 40000",
+    "test": "mocha --recursive --extension 'test.js' --timeout 40000 --parallel --check-leaks src/",
     "lint": "semistandard --fix"
   }
 }
