@@ -1,65 +1,111 @@
 // Brief: Key-Value Database hosted as a GitHub Repo
 
 import * as types from './types.js';
-import Repository from './github.js';
+import Ambimap from './utils/ambimap.js';
+import Repository from './utils/github.js';
 import { hexToBase64Url, base64ToHex } from './utils/conversions.js';
+
+const defaultPaths = ['bytes', 'view.txt', 'view.json'];
+
+const typesToCommitHash = new Ambimap();
+const commitHashToTypes = typesToCommitHash.inv;
+
+function encodeCommitMsg ({ mimeType, extension } = {}) {
+  if (mimeType && extension) {
+    return `${mimeType};extension=${extension}`;
+  } else {
+    return mimeType ?? '';
+  }
+}
+
+function decodeCommitMsg (message) {
+  if (!message) return {};
+  const [mimeType, rest] = message.split(';');
+  const extension = rest?.split('=').pop();
+  return { mimeType, extension };
+}
 
 export default class Database {
   repository;
+
+  async commitTyped (input, { encrypt, push } = {}) {
+    const { type, mimeType, bytes, extension } = await types.typedToBytes(input);
+    const paths = [...defaultPaths];
+    if (mimeType && extension) paths.push(`view.${extension}`);
+    // If extension is undefined, but mimeType exists, `paths` is same as `defaultPaths`.
+    // Ensures git-tree object reuse between commits that differ only in commit-message(s).
+    const message = encodeCommitMsg({ mimeType, extension });
+    const commitHash = await this.repository.commitBytes(bytes, { message, paths, encrypt, push });
+    const viewPath = extension ? `view.${extension}` : 'bytes';
+    return { commitHash, type, viewPath };
+  }
+
+  async init () {
+    const refUpdates = [];
+    for (const type of types.types) {
+      const { commitHash } = await this.commitTyped(type, { encrypt: false });
+      refUpdates.push({ afterOid: commitHash, name: `refs/tags/kv/types/${type}` });
+    }
+    await this.repository.updateRefs(refUpdates);
+  }
 
   // Await this static method to get a class instance
   // Params: Same as that of Repository.constructor() in ./github.js
   static async instantiate (obj) {
     const repository = await Repository.instantiate(obj);
-    return new Database(repository);
+    const instance = new Database(repository);
+    if (typesToCommitHash.size === 0) {
+      for (const type of types.types) {
+        const { commitHash } = await instance.commitTyped(type, { encrypt: false, push: false });
+        typesToCommitHash.set(type, commitHash);
+      }
+    }
+    return instance;
   }
 
-  // Params: repository <Repository>, instance of the Repository class exported by ./github.js
+  // Params: repository <Repository>, instance of the Repository class exported by ./utils/github.js
   constructor (repository) {
     this.repository = repository;
   }
 
   async keyToUuid (key, { push = false } = {}) {
-    const { type, mimeType, bytes } = await types.typedToBytes(key);
-    let commitHash;
-    if (push) {
-      commitHash = await this.repository.commitBytes(bytes, { message: mimeType });
-    } else {
-      commitHash = await this.repository.bytesToCommitHash(bytes, { message: mimeType });
-    }
+    const { commitHash, type } = await this.commitTyped(key, { push });
     return { uuid: `${type}/${hexToBase64Url(commitHash)}`, type, commitHash };
   }
 
   async uuidToKey (uuid) {
     const [type, base64CommitHash] = uuid.split('/');
     const commitHash = base64ToHex(base64CommitHash);
-    const [ bytes, mimeType ] = await Promise.all([
+    const [bytes, commitMsg] = await Promise.all([
       this.repository.fetchCommitContent(commitHash),
-      type === 'Blob'? this.repository.fetchCommitMessage(commitHash) : undefined
+      type === 'Blob' ? this.repository.fetchCommitMessage(commitHash) : ''
     ]);
+    const { mimeType } = decodeCommitMsg(commitMsg);
     return types.bytesToTyped({ type, mimeType, bytes });
   }
 
   async create (key, val, { overwrite = false } = {}) {
-    const { type: valType, mimeType, bytes: valBytes } = await types.typedToBytes(val);
     // Using Promise.all to parallelize network IO
     const [
       { uuid, commitHash: keyCommitHash },
-      valBytesCommitHash
+      { commitHash: valBytesCommitHash, type: valType, viewPath: valViewPath }
     ] = await Promise.all([
       this.keyToUuid(key, { push: true }),
-      this.repository.commitBytes(valBytes, { message: mimeType })
+      this.commitTyped(val)
     ]);
     const beforeOid = overwrite ? undefined : '0000000000000000000000000000000000000000';
     try {
       await this.repository.updateRefs([
         { beforeOid, afterOid: keyCommitHash, name: `refs/tags/kv/${uuid}` },
         { afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
-        { afterOid: types.typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
+        { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
       ]);
-      return { uuid, ...this.repository.cdnLinks(valBytesCommitHash) };
+      return { uuid, cdnLinks: this.repository.cdnLinks(valBytesCommitHash, valViewPath) };
     } catch (err) {
       if (!overwrite && await this.has(key)) throw new Error('Key exists');
+      if (await this.repository.hasCommit(typesToCommitHash.get(valType)) === false) {
+        throw new Error('Database not initialized. Run db.init()');
+      }
       throw err;
     }
   }
@@ -109,16 +155,15 @@ export default class Database {
           id: this.repository.id,
           bytesBranch: `refs/heads/${bytesBranch}`,
           typeBranch: `refs/heads/${typeBranch}`,
-          path: 'value'
+          path: 'bytes'
         }
       )
         .then((response) => response.node);
 
       valBytesCommitHash = bytes?.target?.oid;
       valBytesCommitMessage = bytes?.target?.message;
-      valBytesBlobHash =  bytes?.target?.file?.oid;
+      valBytesBlobHash = bytes?.target?.file?.oid;
       valTypeCommitHash = type?.target?.oid;
-
     } else {
       [valBytesCommitHash, valTypeCommitHash] = await Promise.all([
         this.repository.branchToCommitHash(bytesBranch),
@@ -128,11 +173,11 @@ export default class Database {
 
     if (valBytesCommitHash === undefined) return;
 
-    const valType = types.commitHashToTypes.get(valTypeCommitHash);
+    const valType = commitHashToTypes.get(valTypeCommitHash);
     if (valType === 'Blob' && valBytesCommitMessage === undefined) {
       valBytesCommitMessage = await this.repository.fetchCommitMessage(valBytesCommitHash);
     }
-    const mimeType = valBytesCommitMessage ? valBytesCommitMessage : undefined;
+    const mimeType = valBytesCommitMessage ? valBytesCommitMessage.split(';')[0] : undefined;
 
     let valBytes;
     // Compare fetchCommitContent() in ./github.js
@@ -166,23 +211,25 @@ export default class Database {
       this.keyToUuid(oldValClone),
       modifier(oldVal)
     ]);
-    const { type: valType, bytes: valBytes } = await types.typedToBytes(val);
-    const valBytesCommitHash = await this.repository.commitBytes(valBytes);
+    const { commitHash: valBytesCommitHash, type: valType, viewPath: valViewPath } = await this.commitTyped(val);
     const { uuid } = await this.keyToUuid(key);
-    return this.repository.updateRefs([
-      { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
-      { afterOid: types.typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
-    ])
-      .then(() => {
-        return {
-          oldValue: oldValClone,
-          currentValue: val,
-          cdnLinks: this.repository.cdnLinks(valBytesCommitHash)
-        };
-      })
-      .catch((err) => {
-        throw err;// new Error('Update failed');
-      });
+    try {
+      await this.repository.updateRefs([
+        { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
+        { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
+      ]);
+
+      return {
+        oldValue: oldValClone,
+        currentValue: val,
+        cdnLinks: this.repository.cdnLinks(valBytesCommitHash, valViewPath)
+      };
+    } catch (error) {
+      if (await this.repository.hasCommit(typesToCommitHash.get(valType)) === false) {
+        throw new Error('Database not initialized. Run db.init()');
+      }
+      throw new Error('Update failed');
+    }
   }
 
   async increment (key, incr = 1) {

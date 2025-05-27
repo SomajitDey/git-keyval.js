@@ -1,10 +1,11 @@
 # Brief: This workflow initializes the upstream repository by pushing the type commits
-# Note: Must be run on the default branch
 
 name: Init
 
 on:
   workflow_dispatch: # Enables manual triggering
+  push:
+    branches: [main] # To trigger on repo creation from template
 
 concurrency:
   group: ${{ github.repository }}
@@ -20,27 +21,21 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Create root commits for all the supported types, and tag them as such
+      - name: Check out current (i.e. triggering) branch
+        uses: actions/checkout@v4
+      - name: Set up Node runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          check-latest: false
+          cache: npm
+      - name: Install dependencies
+        run: npm ci # Clean, frozen install. Doesn't modify package.json or package-lock.json
+      - name: Clean prior init, if any
+        continue-on-error: true
+        run: git ls-remote --tags origin kv/types/* | cut -f2 | xargs git push --delete origin
+      - name: Init
+        if: always()
         env:
-          GIT_AUTHOR_NAME: 'a a' # Repeats letter for compression
-          GIT_AUTHOR_EMAIL: 'a@a.a' # Repeats letter in name for compression
-          GIT_AUTHOR_DATE: '1735689600 +0000' # 2025-01-01T00:00:00.000Z
-          GIT_COMMITTER_NAME: 'a a' # Repeats author name for compression
-          GIT_COMMITTER_EMAIL: 'a@a.a' # Repeats author email for compression
-          GIT_COMMITTER_DATE: '1735689600 +0000' # Repeats author date for compression
-        run: |
-          git init
-          touch value
-          ln value value.txt
-          ln value value.json
-          refspec=''
-          for type in 'Number' 'Boolean' 'String' 'JSON' 'Blob' 'ArrayBuffer'; do
-            git checkout --orphan="${type}"
-            echo -n "${type}" > value
-            git add value*
-            git commit --allow-empty-message -m ''
-            refspec+="+refs/heads/${type}:refs/tags/kv/types/${type} "
-          done
-          git remote add origin \
-            "https://${GITHUB_REPOSITORY_OWNER}:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}"
-          git push --force origin ${refspec}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: src/init.js "${GITHUB_REPOSITORY}"
