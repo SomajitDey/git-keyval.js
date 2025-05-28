@@ -222,7 +222,7 @@ export default class Database {
         type: 'Number'
       });
     };
-    if (expiryId === x.yesterdayId()) return { uuid }; // Return undefined for expired data
+    if (x.isStale(expiryId)) return { uuid }; // Return undefined value for expired data
 
     return {
       uuid,
@@ -251,7 +251,7 @@ export default class Database {
       value: oldVal,
       valBytesCommitHash: oldValBytesCommitHash,
       expiryCommitHash: oldExpiryCommitHash
-    } = await this.read(key);
+    } = await this.#read(key);
     if (oldVal === undefined) throw new Error('Nothing to update. Use create method instead.');
     // Clone (deep copy) instead of returning (reference to) oldVal as
     //  modifier() might modify oldVal in place

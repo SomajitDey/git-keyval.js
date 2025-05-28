@@ -55,14 +55,22 @@ export function idToDate (id) {
 }
 
 export function getExpiry (ttlDays, now = new Date()) {
+  if (ttlDays === undefined) return; // undefined in undefined out
   if (isNaN(ttlDays) || ttlDays < 0 || ttlDays > maxTtlDays - 1) {
     throw new Error(`TTL must be within [0, ${maxTtlDays - 1}]`);
   }
   return date.addDays(getToday(now), ttlDays);
 }
 
+// Returns: <number>, can have a fractional part
 export function getTtlDays (expiry) {
+  if (expiry === undefined) return; // undefined in undefined out
   const now = new Date();
   if (expiry.getTime() < now.getTime()) return 0;
   return date.subtract(expiry, now).toDays();
+}
+
+// Brief: If id refers to yesterday, it is stale / defunct and will be deleted today.
+export function isStale (id) {
+  return id === yesterdayId();
 }
