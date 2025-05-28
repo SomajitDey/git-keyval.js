@@ -131,7 +131,7 @@ export default class Database {
     const expiryBranch = `kv/${uuid}/expiry`;
 
     let valBytesCommitHash, valBytesCommitMessage, valBytesBlobHash, valTypeCommitHash, expiryCommitHash, expiryBlobHash;
-
+let expiryId;
     if (this.repository.authenticated) {
       // GraphQL consumes only one ratelimit point for all the following queries!
       const { bytes, type, expiry } = await this.repository.graphql(
@@ -160,7 +160,11 @@ export default class Database {
                     oid
                     ... on Commit {
                       file(path: $path){
-                        oid
+                        object {
+                          ... on Blob {
+                            text
+                          }
+                        }
                       }
                     }
                   }
@@ -183,8 +187,7 @@ export default class Database {
       valBytesCommitMessage = bytes?.target?.message;
       valBytesBlobHash = bytes?.target?.file?.oid;
       valTypeCommitHash = type?.target?.oid;
-      expiryCommitHash = expiry?.target?.oid;
-      expiryBlobHash = expiry?.target?.file?.oid;
+      expiryId = expiry?.target?.file?.object?.text;
     } else {
       [valBytesCommitHash, valTypeCommitHash, expiryCommitHash] = await Promise.all([
         this.repository.branchToCommitHash(bytesBranch),
@@ -201,31 +204,30 @@ export default class Database {
     }
     const mimeType = valBytesCommitMessage ? valBytesCommitMessage.split(';')[0] : undefined;
 
-    let valBytes, expiryBytes;
+    let valBytesPromise;
     // Compare fetchCommitContent() in ./github.js
     if (this.repository.isPublic) {
       // Use CDN to fetch
-      valBytes = await this.repository.fetchCommitContent(valBytesCommitHash);
-      expiryBytes = expiryCommitHash !== undefined ?
-        await this.repository.fetchCommitContent(expiryCommitHash) : undefined;
+      valBytesPromise = this.repository.fetchCommitContent(valBytesCommitHash);
     } else {
       // Use GitHub REST API to fetch directly from the blob
-      valBytes = await this.repository.fetchBlobContent(valBytesBlobHash);
-      expiryBytes = expiryCommitHash !== undefined ?
-        await this.repository.fetchBlobContent(expiryBlobHash) : undefined;
+      valBytesPromise = this.repository.fetchBlobContent(valBytesBlobHash);
     }
 
-    const expiryId = expiryBytes !== undefined ? types.bytesToTyped({
-      bytes: expiryBytes,
-      type: 'Number'
-    }) : undefined;
+    if (expiryId === undefined && expiryCommitHash) {
+      const expiryBytes = await this.repository.fetchCommitContent(expiryCommitHash);
+      expiryId = types.bytesToTyped({
+        bytes: expiryBytes,
+        type: 'Number'
+      });
+    };
     const expiry = expiryId !== undefined ? x.idToDate(expiryId) : undefined;
     const ttl = expiry !== undefined? x.getTtlDays(expiry) : undefined;
     if (ttl === 0) return {}; // Return undefined for expired data
 
     return {
       value: types.bytesToTyped({
-        bytes: valBytes,
+        bytes: await valBytesPromise,
         type: valType,
         mimeType
       }),
