@@ -12,7 +12,7 @@ import date from 'date-and-time';
 export const timeOrigin = new Date('2025-01-01T00:00:00Z'); // Any time from recent past
 
 // Lifetime must be so large that retaining data beyond it practically means persistency
-export const lifetimeDays = 10000;
+export const lifetimeDays = 10002;
 
 // max TTL must be < lifetime, because deletion will be done by GitHub workflow 1 day after expiry
 // However, max TTL must be as big as possible. Hence -1 below.
@@ -39,13 +39,12 @@ export function daysBetween (idBegin, idEnd) {
 export function idToDate (id) {
   if (id >= lifetimeDays) throw new Error(`Index must be < ${lifetimeDays} (lifetime)`);
 
-  // If id refers to yesterday, it is stale / defunct and will be deleted today.
-  // Return undefined without throwing, in order to distinguish this case.
-  if (id === yesterdayId()) return;
-
   const today = getToday();
   const idToday = dateToId(today);
   if (id === idToday) return today;
+
+  // If id refers to yesterday, it is stale / defunct and will be deleted today.
+  if (id === yesterdayId()) return date.addDays(today, -1); // Return yesterday's date.
 
   // Assuming all stale IDs have been deleted,
   // id < idToday can only mean id refers to a date in the next lifetime
@@ -56,8 +55,8 @@ export function idToDate (id) {
 }
 
 export function getExpiry (ttlDays, now = new Date()) {
-  if (isNaN(ttlDays) || ttlDays < 0 || ttlDays > maxTtlDays) {
-    throw new Error(`TTL must be within (0, ${maxTtlDays}]`);
+  if (isNaN(ttlDays) || ttlDays < 0 || ttlDays > maxTtlDays - 1) {
+    throw new Error(`TTL must be within [0, ${maxTtlDays - 1}]`);
   }
   return date.addDays(getToday(now), ttlDays);
 }

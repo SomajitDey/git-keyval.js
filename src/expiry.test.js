@@ -21,6 +21,11 @@ describe('Testing src/expiry.js', () => {
     assert.deepStrictEqual(datePre, day);
   });
   
+  it('idToDate(yesterdayId()) returns yesterday', () => {
+    const yesterday = x.idToDate(x.yesterdayId());
+    assert.equal(date.subtract(x.getToday(),yesterday).toDays(), 1);
+  });
+
   it('yesterdayId()', () => {
     assert.equal(x.daysBetween(x.yesterdayId(), x.dateToId()), 1);
   });
