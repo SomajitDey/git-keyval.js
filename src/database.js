@@ -124,15 +124,15 @@ export default class Database {
     return valBytesCommitHash !== undefined;
   }
 
-  // Returns: { value: , expiry:, ttl: }
+  // Returns: <object>
   async #read (key) {
     const { uuid } = await this.keyToUuid(key);
     const bytesBranch = `kv/${uuid}/value/bytes`;
     const typeBranch = `kv/${uuid}/value/type`;
     const expiryBranch = `kv/${uuid}/expiry`;
 
-    let valBytesCommitHash, valBytesCommitMessage, valBytesBlobHash, valTypeCommitHash, expiryCommitHash, expiryBlobHash;
-let expiryId;
+    let valBytesCommitHash, valBytesCommitMessage, valBytesBlobHash, valTypeCommitHash;
+    let expiryCommitHash, expiryId;
     if (this.repository.authenticated) {
       // GraphQL consumes only one ratelimit point for all the following queries!
       const { bytes, type, expiry } = await this.repository.graphql(
@@ -197,7 +197,7 @@ let expiryId;
       ]);
     }
 
-    if (valBytesCommitHash === undefined) return {};
+    if (valBytesCommitHash === undefined) return { uuid };
 
     const valType = commitHashToTypes.get(valTypeCommitHash);
     if (valType === 'Blob' && valBytesCommitMessage === undefined) {
@@ -222,17 +222,18 @@ let expiryId;
         type: 'Number'
       });
     };
-    const expiry = expiryId !== undefined ? x.idToDate(expiryId) : undefined;
-    const ttl = expiry !== undefined? x.getTtlDays(expiry) : undefined;
-    if (ttl === 0) return {}; // Return undefined for expired data
+    if (expiryId === x.yesterdayId()) return { uuid }; // Return undefined for expired data
 
     return {
+      uuid,
       value: types.bytesToTyped({
         bytes: await valBytesPromise,
         type: valType,
         mimeType
       }),
-      ttl
+      valBytesCommitHash,
+      expiryId,
+      expiryCommitHash
     };
   }
 
@@ -244,20 +245,19 @@ let expiryId;
   // Brief: modifier(oldVal) => newVal
   // Params: modifier <function>, async or not
   // Returns: { oldValue, currentValue, cdnLinks } <object>
-  async update (key, modifier) {
-    const oldVal = await this.read(key);
+  async update (key, modifier, { keepTtl=false, ttl } = {}) {
+    const {
+      uuid,
+      value: oldVal,
+      valBytesCommitHash: oldValBytesCommitHash,
+      expiryCommitHash: oldExpiryCommitHash
+    } = await this.read(key);
+    if (oldVal === undefined) throw new Error('Nothing to update. Use create method instead.');
     // Clone (deep copy) instead of returning (reference to) oldVal as
     //  modifier() might modify oldVal in place
     const oldValClone = structuredClone(oldVal);
-    const [
-      { commitHash: oldValBytesCommitHash },
-      val
-    ] = await Promise.all([
-      this.keyToUuid(oldValClone),
-      modifier(oldVal)
-    ]);
-    const { commitHash: valBytesCommitHash, type: valType, viewPath: valViewPath } = await this.commitTyped(val);
-    const { uuid } = await this.keyToUuid(key);
+    const val = await modifier(oldVal);
+    const { commitHash: valBytesCommitHash, type: valType, cdnLinks } = await this.commitTyped(val);
     try {
       await this.repository.updateRefs([
         { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
@@ -267,13 +267,10 @@ let expiryId;
       return {
         oldValue: oldValClone,
         currentValue: val,
-        cdnLinks: this.repository.cdnLinks(valBytesCommitHash, valViewPath)
+        cdnLinks
       };
     } catch (error) {
-      if (await this.repository.hasCommit(typesToCommitHash.get(valType)) === false) {
-        throw new Error('Database not initialized. Run db.init()');
-      }
-      throw new Error('Update failed');
+      throw new Error('Update failed', { cause: error });
     }
   }
 
