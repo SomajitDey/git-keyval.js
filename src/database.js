@@ -38,8 +38,9 @@ export default class Database {
     // Ensures git-tree object reuse between commits that differ only in commit-message(s).
     const message = encodeCommitMsg({ mimeType, extension });
     const commitHash = await this.repository.commitBytes(bytes, { message, paths, encrypt, push });
-    const viewPath = extension ? `view.${extension}` : 'bytes';
-    return { commitHash, type, viewPath };
+    let cdnLinks;
+    if (extension) cdnLinks = this.repository.cdnLinks(commitHash, `view.${extension}`);
+    return { commitHash, type, cdnLinks };
   }
 
   async init () {
@@ -91,7 +92,7 @@ export default class Database {
     // Using Promise.all to parallelize network IO
     const [
       { uuid, commitHash: keyCommitHash },
-      { commitHash: valBytesCommitHash, type: valType, viewPath: valViewPath },
+      { commitHash: valBytesCommitHash, type: valType, cdnLinks },
       { commitHash: expiryCommitHash }
     ] = await Promise.all([
       this.keyToUuid(key, { push: true }),
@@ -106,7 +107,7 @@ export default class Database {
         { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` },
         { afterOid: expiryCommitHash, name: `kv/${uuid}/expiry` }
       ]);
-      return { uuid, cdnLinks: this.repository.cdnLinks(valBytesCommitHash, valViewPath) };
+      return { uuid, cdnLinks };
     } catch (err) {
       if (!overwrite && await this.has(key)) throw new Error('Key exists');
       if (await this.repository.hasCommit(typesToCommitHash.get(valType)) === false) {
