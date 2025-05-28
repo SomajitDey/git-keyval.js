@@ -326,6 +326,6 @@ export default class Database {
       input.push({ name: `kv/${uuid}/value/type` });
       input.push({ name: `kv/${uuid}/expiry` });
     }
-    return this.repository.updateRefs(input);
+    return await this.repository.updateRefs(input);
   }
 }
