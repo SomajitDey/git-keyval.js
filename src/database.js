@@ -88,6 +88,16 @@ export default class Database {
   }
 
   async create (key, val, { overwrite = false, ttl } = {}) {
+    // For val = undefined, create() with overwrite is equivalent to delete()
+    if (val === undefined) {
+      if (overwrite) {
+        await this.delete([key]);
+      } else {
+        if (await this.has(key)) throw new Error('Key exists');
+      }
+      return {};
+    } 
+
     const expiryId = ttl !== undefined ? x.dateToId(x.getExpiry(ttl)) : undefined;
     // Using Promise.all to parallelize network IO
     const [
@@ -245,7 +255,9 @@ export default class Database {
   // Brief: modifier(oldVal) => newVal
   // Params: modifier <function>, async or not
   // Returns: { oldValue, currentValue, cdnLinks } <object>
+  // Note: keepTtl takes precedence over ttl, if both truthy
   async update (key, modifier, { keepTtl=false, ttl } = {}) {
+    const expiryId = ttl !== undefined ? x.dateToId(x.getExpiry(ttl)) : undefined;
     const {
       uuid,
       value: oldVal,
@@ -257,14 +269,27 @@ export default class Database {
     //  modifier() might modify oldVal in place
     const oldValClone = structuredClone(oldVal);
     const val = await modifier(oldVal);
-    const { commitHash: valBytesCommitHash, type: valType, cdnLinks } = await this.commitTyped(val);
+    if (val === undefined) {
+      await this.delete([key]);
+      return { oldValue: oldValClone };
+    };
+    const [
+      { commitHash: valBytesCommitHash, type: valType, cdnLinks },
+      { commitHash: newExpiryCommitHash }
+    ] = await Promise.all([
+      this.commitTyped(val),
+      this.commitTyped(expiryId)
+    ]);
+    const expiryCommitHash = keepTtl ? oldExpiryCommitHash : newExpiryCommitHash;
     try {
       await this.repository.updateRefs([
         { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
-        { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` }
+        { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` },
+        { afterOid: expiryCommitHash, name: `kv/${uuid}/expiry` }
       ]);
 
       return {
+        uuid,
         oldValue: oldValClone,
         currentValue: val,
         cdnLinks

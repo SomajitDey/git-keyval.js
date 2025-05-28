@@ -37,7 +37,9 @@ export function daysBetween (idBegin, idEnd) {
 };
 
 export function idToDate (id) {
-  if (id >= lifetimeDays) throw new Error(`Index must be < ${lifetimeDays} (lifetime)`);
+  if (isNaN(id) || id < 0 || id >  lifetimeDays - 1) {
+    throw new Error(`Index must be within [0, ${lifetimeDays - 1}]`);
+  };
 
   const today = getToday();
   const idToday = dateToId(today);
@@ -55,7 +57,6 @@ export function idToDate (id) {
 }
 
 export function getExpiry (ttlDays, now = new Date()) {
-  if (ttlDays === undefined) return; // undefined in undefined out
   if (isNaN(ttlDays) || ttlDays < 0 || ttlDays > maxTtlDays - 1) {
     throw new Error(`TTL must be within [0, ${maxTtlDays - 1}]`);
   }
@@ -64,7 +65,6 @@ export function getExpiry (ttlDays, now = new Date()) {
 
 // Returns: <number>, can have a fractional part
 export function getTtlDays (expiry) {
-  if (expiry === undefined) return; // undefined in undefined out
   const now = new Date();
   if (expiry.getTime() < now.getTime()) return 0;
   return date.subtract(expiry, now).toDays();
