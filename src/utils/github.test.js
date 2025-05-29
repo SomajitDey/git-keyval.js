@@ -29,10 +29,6 @@ describe('Testing github', () => {
     });
   });
 
-  it('hasCommit', async () => {
-    // assert.equal(await repository.hasCommit(typesToCommitHash.get('Blob')), true);
-  });
-
   it('fetchCommitContent and fetchBlobContent return undefined if object is non-existent',
     async () => {
       const randomHash = '3ac5ed658d05ac06b6584af5a4fa8fd7784c2119';
@@ -41,9 +37,13 @@ describe('Testing github', () => {
     }
   );
 
-  it('commitBytes, bytesToCommitHash, fetchCommitContent, cdnLinks, updateRefs and branchToCommitHash', async () => {
+  it(
+      `commitBytes, bytesToCommitHash, fetchCommitContent, cdnLinks, updateRefs,
+      refToCommitHash, hasCommit, hasRef`,
+      async () => {
     const bytes = crypto.getRandomValues(new Uint8Array(14));
     const commitHash = await repository.commitBytes(bytes);
+    assert.ok(await repository.hasCommit(commitHash));
     assert.equal(await repository.commitBytes(bytes, { push: false }), commitHash);
     assert.deepStrictEqual(await repository.fetchCommitContent(commitHash), bytes);
     const [cdnLink] = repository.cdnLinks(commitHash);
@@ -52,9 +52,13 @@ describe('Testing github', () => {
     }
     const branch = 'test/target/' + commitHash;
     await repository.updateRefs([{ afterOid: commitHash, name: branch }]);
-    assert.equal(await repository.branchToCommitHash(branch), commitHash);
+    assert.ok(await repository.hasRef(branch));
+    assert.equal(await repository.refToCommitHash(`refs/heads/` + branch), commitHash);
+    assert.equal(await repository.refToCommitHash(branch), commitHash);
     // Delete the branch
     await repository.updateRefs([{ name: branch }]);
-    assert.equal(await repository.branchToCommitHash(branch), undefined);
-  });
+    assert.equal(await repository.refToCommitHash(branch), undefined);
+    assert.equal(await repository.hasRef(`refs/heads/` + branch), false);
+  }
+  );
 });

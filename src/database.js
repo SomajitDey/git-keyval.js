@@ -107,7 +107,8 @@ export default class Database {
     ] = await Promise.all([
       this.keyToUuid(key, { push: true }),
       this.commitTyped(val),
-      this.commitTyped(expiryId)
+      this.commitTyped(expiryId, { encrypt: false })
+      // Not encrypting expiryId allows it to be read as text using GraphQL in #read()
     ]);
     const existingKeyCommitHash = overwrite ? undefined : '0000000000000000000000000000000000000000';
     try {
@@ -129,9 +130,7 @@ export default class Database {
 
   async has (key) {
     const { uuid } = await this.keyToUuid(key);
-    const bytesBranch = `kv/${uuid}/value/bytes`;
-    const valBytesCommitHash = await this.repository.branchToCommitHash(bytesBranch);
-    return valBytesCommitHash !== undefined;
+    return this.repository.hasRef(`refs/tags/kv/${uuid}`);
   }
 
   // Returns: <object>
@@ -145,6 +144,7 @@ export default class Database {
     let expiryCommitHash, expiryId;
     if (this.repository.authenticated) {
       // GraphQL consumes only one ratelimit point for all the following queries!
+      // Not encrypting expiryId allows it to be read as text using GraphQL!
       const { bytes, type, expiry } = await this.repository.graphql(
         `
           query($id: ID!, $bytesBranch: String!, $typeBranch: String!, $expiryBranch: String!, $path: String!) {
@@ -201,9 +201,9 @@ export default class Database {
       expiryId = expiry?.target?.file?.object?.text;
     } else {
       [valBytesCommitHash, valTypeCommitHash, expiryCommitHash] = await Promise.all([
-        this.repository.branchToCommitHash(bytesBranch),
-        this.repository.branchToCommitHash(typeBranch),
-        this.repository.branchToCommitHash(expiryBranch)
+        this.repository.refToCommitHash(bytesBranch),
+        this.repository.refToCommitHash(typeBranch),
+        this.repository.refToCommitHash(expiryBranch)
       ]);
     }
 
@@ -226,7 +226,7 @@ export default class Database {
     }
 
     if (expiryId === undefined && expiryCommitHash) {
-      const expiryBytes = await this.repository.fetchCommitContent(expiryCommitHash);
+      const expiryBytes = await this.repository.fetchCommitContent(expiryCommitHash, { decrypt: false });
       expiryId = types.bytesToTyped({
         bytes: expiryBytes,
         type: 'Number'
@@ -265,9 +265,12 @@ export default class Database {
       expiryCommitHash: oldExpiryCommitHash
     } = await this.#read(key);
     if (oldVal === undefined) throw new Error('Nothing to update. Use create method instead.');
-    // Clone (deep copy) instead of returning (reference to) oldVal as
-    //  modifier() might modify oldVal in place
-    const oldValClone = structuredClone(oldVal);
+
+    // If old value is an object, (null is also erroneously recognized as object) modifier() might
+    // modify it in place. To return the old value as is, in that case, clone it.
+    const oldValClone = typeof oldVal === 'object' && oldVal !== null ?
+      structuredClone(oldVal) : oldVal;
+
     const val = await modifier(oldVal);
     if (val === undefined) {
       await this.delete([key]);
@@ -278,7 +281,8 @@ export default class Database {
       { commitHash: newExpiryCommitHash }
     ] = await Promise.all([
       this.commitTyped(val),
-      this.commitTyped(expiryId)
+      this.commitTyped(expiryId, { encrypt: false })
+      // Not encrypting expiryId allows it to be read as text using GraphQL in #read()
     ]);
     const expiryCommitHash = keepTtl ? oldExpiryCommitHash : newExpiryCommitHash;
     try {
@@ -326,6 +330,6 @@ export default class Database {
       input.push({ name: `kv/${uuid}/value/type` });
       input.push({ name: `kv/${uuid}/expiry` });
     }
-    return await this.repository.updateRefs(input);
+    return this.repository.updateRefs(input);
   }
 }
