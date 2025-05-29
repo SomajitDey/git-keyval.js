@@ -135,7 +135,7 @@ export default class Database {
 
   // Returns: <object>
   async #read (key) {
-    const { uuid } = await this.keyToUuid(key);
+    const { uuid, commitHash: keyCommitHash } = await this.keyToUuid(key);
     const bytesBranch = `kv/${uuid}/value/bytes`;
     const typeBranch = `kv/${uuid}/value/type`;
     const expiryBranch = `kv/${uuid}/expiry`;
@@ -236,6 +236,7 @@ export default class Database {
 
     return {
       uuid,
+      keyCommitHash,
       value: types.bytesToTyped({
         bytes: await valBytesPromise,
         type: valType,
@@ -252,7 +253,8 @@ export default class Database {
     return value;
   }
 
-  // Brief: modifier(oldVal) => newVal
+  // Brief: modifier(oldVal) => newVal. Deletes the key if newVal is undefined.
+  //   No-op, i.e. doesn't update, if modifier throws error.
   // Params: modifier <function>, async or not
   // Returns: { oldValue, currentValue, cdnLinks } <object>
   // Note: keepTtl takes precedence over ttl, if both truthy
@@ -260,6 +262,7 @@ export default class Database {
     const expiryId = ttl !== undefined ? x.dateToId(x.getExpiry(ttl)) : undefined;
     const {
       uuid,
+      keyCommitHash,
       value: oldVal,
       valBytesCommitHash: oldValBytesCommitHash,
       expiryCommitHash: oldExpiryCommitHash
@@ -272,10 +275,7 @@ export default class Database {
       structuredClone(oldVal) : oldVal;
 
     const val = await modifier(oldVal);
-    if (val === undefined) {
-      await this.delete(key);
-      return { oldValue: oldValClone };
-    };
+
     const [
       { commitHash: valBytesCommitHash, type: valType, cdnLinks },
       { commitHash: newExpiryCommitHash }
@@ -284,12 +284,19 @@ export default class Database {
       this.commitTyped(expiryId, { encrypt: false })
       // Not encrypting expiryId allows it to be read as text using GraphQL in #read()
     ]);
-    const expiryCommitHash = keepTtl ? oldExpiryCommitHash : newExpiryCommitHash;
+    
+    let expiryCommitHash, newKeyCommitHash;
+    if (valBytesCommitHash) {
+      expiryCommitHash = keepTtl ? oldExpiryCommitHash : newExpiryCommitHash;
+      newKeyCommitHash = keyCommitHash;
+    }
+
     try {
       await this.repository.updateRefs([
         { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
         { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` },
-        { afterOid: expiryCommitHash, name: `kv/${uuid}/expiry` }
+        { afterOid: expiryCommitHash, name: `kv/${uuid}/expiry` },
+        { afterOid: newKeyCommitHash, name: `refs/tags/kv/${uuid}` }
       ]);
 
       return {
