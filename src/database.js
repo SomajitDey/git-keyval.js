@@ -91,7 +91,7 @@ export default class Database {
     // For val = undefined, create() with overwrite is equivalent to delete()
     if (val === undefined) {
       if (overwrite) {
-        await this.delete([key]);
+        await this.delete(key);
       } else {
         if (await this.has(key)) throw new Error('Key exists');
       }
@@ -273,7 +273,7 @@ export default class Database {
 
     const val = await modifier(oldVal);
     if (val === undefined) {
-      await this.delete([key]);
+      await this.delete(key);
       return { oldValue: oldValClone };
     };
     const [
@@ -321,15 +321,22 @@ export default class Database {
     return this.update(key, modifier);
   }
 
-  async delete ([...keys]) {
+  async delete (...keys) {
     const input = [];
     for (const key of keys) {
+
+      // This is a hack without which delete() fails often
+      if (! await this.has(key)) continue;
+      // Might be due to a bug in the GitHub APIs
+
       const { uuid } = await this.keyToUuid(key);
-      input.push({ name: `refs/tags/kv/${uuid}` });
-      input.push({ name: `kv/${uuid}/value/bytes` });
-      input.push({ name: `kv/${uuid}/value/type` });
-      input.push({ name: `kv/${uuid}/expiry` });
+      input.push(
+        { name: `kv/${uuid}/value/bytes` },
+        { name: `kv/${uuid}/value/type` },
+        { name: `kv/${uuid}/expiry` },
+        { name: `refs/tags/kv/${uuid}` }
+      );
     }
-    return this.repository.updateRefs(input);
+    await this.repository.updateRefs(input);
   }
 }
