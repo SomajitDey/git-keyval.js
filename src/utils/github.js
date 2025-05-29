@@ -193,7 +193,7 @@ export default class Repository {
   // Brief: Equivalent to CLI: git push --atomic --force-with-lease <name>:<beforeOid> origin +<afterOid>:<name>
   // Params: refUpdates <[<refUpdate>]>;  [] means array
   // Each <refUpdate> is an object, ! means required:
-  //  { beforeOid: hex <string>, afterOid: hex <string> | 0, name: <string>! }
+  //  { force: <boolean>, beforeOid: hex <string>, afterOid: hex <string> | 0, name: <string>! }
   //  `name` must be fully qualified (starting with `refs/`) or a branch-name
   // Ref: https://docs.github.com/en/graphql/reference/mutations#updaterefs
   async updateRefs ([...refUpdates]) {
@@ -206,10 +206,10 @@ export default class Repository {
       // If name is not a fully qualified name, format ref as branch
       if (!name.startsWith('refs/')) refUpdate.name = `refs/heads/${name}`;
 
-      // Enable force update. This makes the `beforeOid` property optional.
-      refUpdate.force = true;
+      // Enable force update, if not opted out for
+      refUpdate.force = refUpdate.force ?? true;
     });
-    return this.graphql(
+    await this.graphql(
   `
     mutation($repositoryId: ID!, $refUpdates: [RefUpdate!]!) {
       updateRefs(input: { repositoryId: $repositoryId, refUpdates: $refUpdates }) {
