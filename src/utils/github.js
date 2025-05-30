@@ -40,7 +40,9 @@ export default class Repository {
     return instance;
   }
 
-  constructor ({ owner, repo, auth, encrypt, decrypt, committer, author }) {
+  // Param: options <object>
+  // options.fetch: <function>, custom fetch method
+  constructor ({ owner, repo, auth, encrypt, decrypt, committer, author, fetch }) {
     this.owner = owner;
     this.name = repo;
     this.authenticated = Boolean(auth);
@@ -61,6 +63,9 @@ export default class Repository {
       headers: {
         Authorization: auth ? `Bearer ${auth}` : undefined,
         'X-GitHub-Api-Version': '2022-11-28'
+      },
+      request: {
+        fetch
       }
     });
 
@@ -345,7 +350,8 @@ export default class Repository {
     `https://cdn.jsdelivr.net/gh/${user}/${repo}@${commitHash}/${path}`,
     `https://cdn.statically.io/gh/${user}/${repo}/${commitHash}/${path}`,
     `https://rawcdn.githack.com/${user}/${repo}/${commitHash}/${path}`,
-    `https://raw.githubusercontents.com/${user}/${repo}/${commitHash}/${path}`
+    `https://esm.sh/gh/${user}/${repo}@${commitHash}/${path}`,
+    `https://raw.githubusercontent.com/${user}/${repo}/${commitHash}/${path}`
     ];
   }
 }

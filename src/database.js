@@ -7,6 +7,8 @@ import Repository from './utils/github.js';
 import { hexToBase64Url, base64ToHex } from './utils/conversions.js';
 
 const defaultPaths = ['bytes', 'view.txt', 'view.json'];
+const txtView = 'view.txt'; // Safer than `bytes` because it has plain/text extension.
+// Using `bytes` breaks the esm.sh CDN link.
 
 const typesToCommitHash = new Ambimap();
 const commitHashToTypes = typesToCommitHash.inv;
@@ -81,7 +83,7 @@ export default class Database {
     const [type, base64CommitHash] = uuid.split('/');
     const commitHash = base64ToHex(base64CommitHash);
     const [bytes, commitMsg] = await Promise.all([
-      this.repository.fetchCommitContent(commitHash),
+      this.repository.fetchCommitContent(commitHash, { path: txtView }),
       type === 'Blob' ? this.repository.fetchCommitMessage(commitHash) : ''
     ]);
     const { mimeType } = decodeCommitMsg(commitMsg);
@@ -125,7 +127,7 @@ export default class Database {
     ]);
     
     // Prep for deletion if val === undefined
-    if (valType === undefined) {
+    if (val === undefined) {
       keyCommitHash = null;
       expiryCommitHash = null;
     } else {
@@ -213,7 +215,7 @@ export default class Database {
           bytesBranch: `refs/heads/${bytesBranch}`,
           typeBranch: `refs/heads/${typeBranch}`,
           expiryBranch: `refs/heads/${expiryBranch}`,
-          path: 'bytes'
+          path: txtView
         }
       )
         .then((response) => response.node);
@@ -243,14 +245,14 @@ export default class Database {
     // Compare fetchCommitContent() in ./github.js
     if (this.repository.isPublic) {
       // Use CDN to fetch
-      valBytesPromise = this.repository.fetchCommitContent(valBytesCommitHash);
+      valBytesPromise = this.repository.fetchCommitContent(valBytesCommitHash, { path: txtView });
     } else {
       // Use GitHub REST API to fetch directly from the blob
       valBytesPromise = this.repository.fetchBlobContent(valBytesBlobHash);
     }
 
     if (expiryId === undefined && expiryCommitHash) {
-      const expiryBytes = await this.repository.fetchCommitContent(expiryCommitHash, { decrypt: false });
+      const expiryBytes = await this.repository.fetchCommitContent(expiryCommitHash, { decrypt: false, path: txtView });
       expiryId = types.bytesToTyped({
         bytes: expiryBytes,
         type: 'Number'
