@@ -192,23 +192,32 @@ export default class Repository {
 
   // Brief: Equivalent to CLI: git push --atomic --force-with-lease <name>:<beforeOid> origin +<afterOid>:<name>
   // Params: refUpdates <[<refUpdate>]>;  [] means array
-  // Each <refUpdate> is an object, ! means required:
-  //  { force: <boolean>, beforeOid: hex <string>, afterOid: hex <string> | 0, name: <string>! }
-  //  `name` must be fully qualified (starting with `refs/`) or a branch-name
+  //  Each <refUpdate> is an object with the following entries.
+  //  ! means required. Absent keys have undefined values.
+  //  name: <string>!, fully qualified (starting with `refs/`) or a branch-name
+  //  beforeOid: hex <string> | null (meaning ref doesn't exist) | undefined (meaning ref can point to anything)
+  //  afterOid: hex <string> | <null | undefined> (meaning ref is to be deleted)
+  //  force: <boolean>
   // Ref: https://docs.github.com/en/graphql/reference/mutations#updaterefs
   async updateRefs ([...refUpdates]) {
-    refUpdates.forEach((refUpdate) => {
-      const { afterOid, name } = refUpdate;
+    const defunct = '0000000000000000000000000000000000000000';
 
-      // If afterOid is falsy (undefined, null, false, or 0), format ref for deletion
-      if (!afterOid) refUpdate.afterOid = '0000000000000000000000000000000000000000';
+    for (const refUpdate of refUpdates) {
+      const { name, beforeOid, afterOid, force } = refUpdate;
 
       // If name is not a fully qualified name, format ref as branch
-      if (!name.startsWith('refs/')) refUpdate.name = `refs/heads/${name}`;
+      if ( !name.startsWith('refs/') ) refUpdate.name = `refs/heads/${name}`;
+
+      // If beforeOid is null, ref shouldn't be pre-existing
+      if ( beforeOid === null ) refUpdate.beforeOid = defunct;
+
+      // If afterOid is nullish (undefined | null), format ref for deletion
+      refUpdate.afterOid = afterOid ?? defunct;
 
       // Enable force update, if not opted out for
-      refUpdate.force = refUpdate.force ?? true;
-    });
+      refUpdate.force = force ?? true;
+    };
+
     await this.graphql(
   `
     mutation($repositoryId: ID!, $refUpdates: [RefUpdate!]!) {

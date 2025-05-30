@@ -29,6 +29,7 @@ function decodeCommitMsg (message) {
 export default class Database {
   repository;
 
+  // Note: undefined in undefined out
   async commitTyped (input, { encrypt, push } = {}) {
     if (input === undefined) return {};
     const { type, mimeType, bytes, extension } = await types.typedToBytes(input);
@@ -87,41 +88,63 @@ export default class Database {
     return types.bytesToTyped({ type, mimeType, bytes });
   }
 
-  //Note: For val = undefined, create() with overwrite is equivalent to delete()
-  async create (key, val, { overwrite = false, ttl } = {}) {
-    if (val === undefined) {
-      if (overwrite) {
-        await this.delete(key);
-      } else {
-        if (await this.has(key)) throw new Error('Key exists');
-      }
-      return {};
-    } 
+  // Note: For val = undefined, create() with overwrite is equivalent to delete()
+  // Note: overwrite: true (key must pre-exist), false (key must not pre-exist), undefined (create key anyway)
+  async create (key, val, { overwrite, ttl, oldValue } = {}) {
+    let pushKey, existingKeyCommitHash;
+    switch (overwrite) {
+      case true:
+        pushKey = false;
+        break;
+      case false:
+        if (oldValue !== undefined) throw new Error('Cannot have oldValue when overwrite: false');
+        existingKeyCommitHash = null;
+        // Using fall-through to achieve default behavior
+      default:
+        pushKey = true;
+    }
+    
+    let expiry, expiryId;
+    if (ttl) {
+      expiry = x.getExpiry(ttl);
+      expiryId = x.dateToId(expiry);
+    }
 
-    const expiryId = ttl !== undefined ? x.dateToId(x.getExpiry(ttl)) : undefined;
     // Using Promise.all to parallelize network IO
-    const [
+    let [
       { uuid, commitHash: keyCommitHash },
       { commitHash: valBytesCommitHash, type: valType, cdnLinks },
-      { commitHash: expiryCommitHash }
+      { commitHash: expiryCommitHash },
+      { commitHash: oldValBytesCommitHash, type: oldValType }
     ] = await Promise.all([
-      this.keyToUuid(key, { push: true }),
-      this.commitTyped(val),
-      this.commitTyped(expiryId, { encrypt: false })
+      this.keyToUuid(key, { push: pushKey }),
+      this.commitTyped(val, { push: true }),
+      this.commitTyped(expiryId, { push: true, encrypt: false }),
       // Not encrypting expiryId allows it to be read as text using GraphQL in #read()
+      this.commitTyped(oldValue, { push: false })
     ]);
-    const existingKeyCommitHash = overwrite ? undefined : '0000000000000000000000000000000000000000';
+    
+    // Prep for deletion if val === undefined
+    if (valType === undefined) {
+      keyCommitHash = null;
+      expiryCommitHash = null;
+    } else {
+      if (overwrite === true) existingKeyCommitHash = keyCommitHash;
+    }
+
     try {
       await this.repository.updateRefs([
         { beforeOid: existingKeyCommitHash, afterOid: keyCommitHash, name: `refs/tags/kv/${uuid}` },
-        { afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
-        { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` },
+        { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
+        { beforeOid: typesToCommitHash.get(oldValType), afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` },
         { afterOid: expiryCommitHash, name: `kv/${uuid}/expiry` }
       ]);
-      return { uuid, cdnLinks };
+
+      return { uuid, cdnLinks, expiry };
     } catch (err) {
-      if (!overwrite && await this.has(key)) throw new Error('Key exists');
-      if (await this.repository.hasCommit(typesToCommitHash.get(valType)) === false) {
+      if (overwrite === false && await this.has(key) === true) throw new Error('Key exists');
+      if (overwrite === true && await this.has(key) === false) throw new Error('Nothing to overwrite');
+      if (valType && await this.repository.hasCommit(typesToCommitHash.get(valType)) === false) {
         throw new Error('Database not initialized. Run db.init()');
       }
       throw err;
@@ -329,22 +352,8 @@ export default class Database {
     return this.update(key, modifier);
   }
 
-  async delete (...keys) {
-    const input = [];
-    for (const key of keys) {
-
-      // This is a hack without which delete() fails often
-      if (! await this.has(key)) continue;
-      // Might be due to a bug in the GitHub APIs
-
-      const { uuid } = await this.keyToUuid(key);
-      input.push(
-        { name: `kv/${uuid}/value/bytes` },
-        { name: `kv/${uuid}/value/type` },
-        { name: `kv/${uuid}/expiry` },
-        { name: `refs/tags/kv/${uuid}` }
-      );
-    }
-    await this.repository.updateRefs(input);
+  // Note: If val is provided delete key only if key => val
+  async delete (key, val = undefined) {
+    return this.create(key, undefined, { oldValue: val });
   }
 }
