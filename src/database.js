@@ -87,8 +87,8 @@ export default class Database {
     return types.bytesToTyped({ type, mimeType, bytes });
   }
 
+  //Note: For val = undefined, create() with overwrite is equivalent to delete()
   async create (key, val, { overwrite = false, ttl } = {}) {
-    // For val = undefined, create() with overwrite is equivalent to delete()
     if (val === undefined) {
       if (overwrite) {
         await this.delete(key);
@@ -131,6 +131,7 @@ export default class Database {
   async has (key) {
     const { uuid } = await this.keyToUuid(key);
     return this.repository.hasRef(`refs/tags/kv/${uuid}`);
+    // TODO: Also check for stale keys, that haven't been garbage-collected (GC) yet
   }
 
   // Returns: <object>
