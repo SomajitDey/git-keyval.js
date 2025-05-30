@@ -60,7 +60,7 @@ export function getExpiry (ttlDays, now = new Date()) {
   if (isNaN(ttlDays) || ttlDays < 0 || ttlDays > maxTtlDays - 1) {
     throw new Error(`TTL must be within [0, ${maxTtlDays - 1}]`);
   }
-  return date.addDays(getToday(now), ttlDays);
+  return date.addDays(getToday(now), Math.floor(ttlDays));
 }
 
 // Returns: <number>, can have a fractional part

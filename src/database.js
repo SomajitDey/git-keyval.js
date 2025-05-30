@@ -147,7 +147,7 @@ export default class Database {
       if (valType && await this.repository.hasCommit(typesToCommitHash.get(valType)) === false) {
         throw new Error('Database not initialized. Run db.init()');
       }
-      throw err;
+      throw new Error('Failed', { cause: err });
     }
   }
 
@@ -159,7 +159,7 @@ export default class Database {
 
   // Returns: <object>
   async #read (key) {
-    const { uuid, commitHash: keyCommitHash } = await this.keyToUuid(key);
+    const { uuid } = await this.keyToUuid(key);
     const bytesBranch = `kv/${uuid}/value/bytes`;
     const typeBranch = `kv/${uuid}/value/type`;
     const expiryBranch = `kv/${uuid}/expiry`;
@@ -231,7 +231,7 @@ export default class Database {
       ]);
     }
 
-    if (valBytesCommitHash === undefined) return { uuid };
+    if (valBytesCommitHash === undefined) return {};
 
     const valType = commitHashToTypes.get(valTypeCommitHash);
     if (valType === 'Blob' && valBytesCommitMessage === undefined) {
@@ -256,19 +256,15 @@ export default class Database {
         type: 'Number'
       });
     };
-    if (x.isStale(expiryId)) return { uuid }; // Return undefined value for expired data
+    if (x.isStale(expiryId)) return {}; // Return undefined value for expired data
 
     return {
-      uuid,
-      keyCommitHash,
       value: types.bytesToTyped({
         bytes: await valBytesPromise,
         type: valType,
         mimeType
       }),
-      valBytesCommitHash,
-      expiryId,
-      expiryCommitHash
+      expiry: expiryId ? x.idToDate(expiryId) : undefined
     };
   }
 
@@ -277,61 +273,33 @@ export default class Database {
     return value;
   }
 
-  // Brief: modifier(oldVal) => newVal. Deletes the key if newVal is undefined.
+  // Brief: modifier(oldValue) => newValue. Deletes the key if newValue is undefined.
   //   No-op, i.e. doesn't update, if modifier throws error.
   // Params: modifier <function>, async or not
   // Returns: { oldValue, currentValue, cdnLinks } <object>
   // Note: keepTtl takes precedence over ttl, if both truthy
   async update (key, modifier, { keepTtl=false, ttl } = {}) {
-    const expiryId = ttl !== undefined ? x.dateToId(x.getExpiry(ttl)) : undefined;
-    const {
-      uuid,
-      keyCommitHash,
-      value: oldVal,
-      valBytesCommitHash: oldValBytesCommitHash,
-      expiryCommitHash: oldExpiryCommitHash
-    } = await this.#read(key);
-    if (oldVal === undefined) throw new Error('Nothing to update. Use create method instead.');
+    const { value: oldValue, expiry: oldExpiry } = await this.#read(key);
 
-    // If old value is an object, (null is also erroneously recognized as object) modifier() might
-    // modify it in place. To return the old value as is, in that case, clone it.
-    const oldValClone = typeof oldVal === 'object' && oldVal !== null ?
-      structuredClone(oldVal) : oldVal;
-
-    const val = await modifier(oldVal);
-
-    const [
-      { commitHash: valBytesCommitHash, type: valType, cdnLinks },
-      { commitHash: newExpiryCommitHash }
-    ] = await Promise.all([
-      this.commitTyped(val),
-      this.commitTyped(expiryId, { encrypt: false })
-      // Not encrypting expiryId allows it to be read as text using GraphQL in #read()
-    ]);
-    
-    let expiryCommitHash, newKeyCommitHash;
-    if (valBytesCommitHash) {
-      expiryCommitHash = keepTtl ? oldExpiryCommitHash : newExpiryCommitHash;
-      newKeyCommitHash = keyCommitHash;
-    }
-
+    let newValue;
     try {
-      await this.repository.updateRefs([
-        { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
-        { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` },
-        { afterOid: expiryCommitHash, name: `kv/${uuid}/expiry` },
-        { afterOid: newKeyCommitHash, name: `refs/tags/kv/${uuid}` }
-      ]);
-
-      return {
-        uuid,
-        oldValue: oldValClone,
-        currentValue: val,
-        cdnLinks
-      };
-    } catch (error) {
-      throw new Error('Update failed', { cause: error });
+      // If old value is an object, modifier() might modify it in place.
+      // To return the old value as is, clone it.
+      // null is also recognized as object by JavaScript, so take that into account.
+      if (typeof oldValue === 'object' && oldValue !== null) {
+        newValue = await modifier(structuredClone(oldValue));
+      } else {
+        newValue = await modifier(oldValue);
+      }
+    } catch (err) {
+      throw new Error('modifier() threw error. See "cause" for details.', { cause: err });
     }
+
+    // Override the provided ttl, if any, in case keepTtl is opted for
+    if (keepTtl) ttl = x.getTtlDays(oldExpiry);
+
+    const obj = this.create(key, newValue, { overwrite: true, ttl, oldValue });
+    return { ...obj, oldValue, newValue };
   }
 
   async increment (key, incr = 1) {
