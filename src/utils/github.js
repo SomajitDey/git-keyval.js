@@ -81,9 +81,34 @@ export default class Repository {
   // Brief: Returns Boolean as to whether the provided commit exists in the repository
   // Params: commitHash <string>
   // Returns: <Boolean>
+  // Note: Can be used unauthenticated
   async hasCommit (commitHash) {
-    return this.request('HEAD /repos/{owner}/{repo}/git/commits/{ref}', {
-      ref: commitHash
+    return this.request('HEAD /repos/{owner}/{repo}/git/commits/{commitHash}', {
+      commitHash
+    })
+      .then(() => true)
+      .catch((err) => {
+        if (err.status === 404) {
+          return false;
+        } else {
+          throw new Error(`GitHub API network error: ${err.status}`);
+        }
+      });
+  }
+
+  // Brief: Returns Boolean as to whether the provided git-reference (branch or tag) exists.
+  // Params: ref <string>, fully qualified (starting with 'refs/') or branch-name
+  // Returns: <Boolean>
+  // Note: Can be used unauthenticated
+  async hasRef (ref) {
+    if (ref.startsWith('refs/')) {
+      ref = ref.substring('refs/'.length);
+    } else {
+      ref = `heads/${ref}`;
+    }
+
+    return this.request('HEAD /repos/{owner}/{repo}/git/ref/{ref}', {
+      ref
     })
       .then(() => true)
       .catch((err) => {
@@ -168,7 +193,8 @@ export default class Repository {
   // Brief: Equivalent to CLI: git push --atomic --force-with-lease <name>:<beforeOid> origin +<afterOid>:<name>
   // Params: refUpdates <[<refUpdate>]>;  [] means array
   // Each <refUpdate> is an object, ! means required:
-  //  { beforeOid: hex <string>, afterOid: hex <string> | 0, name: <string>! }
+  //  { force: <boolean>, beforeOid: hex <string>, afterOid: hex <string> | 0, name: <string>! }
+  //  `name` must be fully qualified (starting with `refs/`) or a branch-name
   // Ref: https://docs.github.com/en/graphql/reference/mutations#updaterefs
   async updateRefs ([...refUpdates]) {
     refUpdates.forEach((refUpdate) => {
@@ -180,10 +206,10 @@ export default class Repository {
       // If name is not a fully qualified name, format ref as branch
       if (!name.startsWith('refs/')) refUpdate.name = `refs/heads/${name}`;
 
-      // Enable force update. This makes the `beforeOid` property optional.
-      refUpdate.force = true;
+      // Enable force update, if not opted out for
+      refUpdate.force = refUpdate.force ?? true;
     });
-    return this.graphql(
+    await this.graphql(
   `
     mutation($repositoryId: ID!, $refUpdates: [RefUpdate!]!) {
       updateRefs(input: { repositoryId: $repositoryId, refUpdates: $refUpdates }) {
@@ -197,13 +223,19 @@ export default class Repository {
   });
   }
 
-  // Brief: Fetch target commit hash for given branch. Returns undefined, if branch doesn't exist.
-  // Params: branch <string>
+  // Brief: Fetch target commit hash for given git-reference (branch or tag).
+  //   Returns undefined, if the reference doesn't exist.
+  // Params: ref <string>, fully qualified (starting with 'refs/') or branch-name
   // Returns: hex <string> | <undefined>
   // Note: Can be used unauthenticated
-  async branchToCommitHash (branch) {
+  async refToCommitHash (ref) {
+    if (ref.startsWith('refs/')) {
+      ref = ref.substring('refs/'.length);
+    } else {
+      ref = `heads/${ref}`;
+    }
     return this.request('GET /repos/{owner}/{repo}/git/ref/{ref}', {
-      ref: `heads/${branch}`
+      ref
     })
       .then((response) => response.data.object.sha)
       .catch((err) => {
