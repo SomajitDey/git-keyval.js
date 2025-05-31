@@ -13,6 +13,26 @@ const txtView = 'view.txt'; // Safer than `bytes` because it has plain/text exte
 const typesToCommitHash = new Ambimap();
 const commitHashToTypes = typesToCommitHash.inv;
 
+// Brief: Get git-references for the given key-uuid.
+// Param: uuid <string>
+function getRefs ( uuid ) {
+  // Designed such that listing these refs using `git` command or the GitHub REST API is performant.
+  // Pattern is matched from the tail of the ref with: `git ls-remote --branches|--tags <pattern>`
+  //   Therefore, better use a suffix instead of a prefix for glob-less (for performance) patterns
+  // GitHub REST and GraphQL APIs, in contrast, only take a prefix to list the matching refs.
+  // All the following refs thus have both a unique suffix (e.g. <uuid>/key) and
+  //   a unique prefix (e.g. kv/keys) to cater to both git CLI and GitHub APIs respectively.
+  // Both git CLI and GitHub API can be asked to limit search for matching refs to branches or tags.
+  //   Therefore, keeping only the expiries in tags to keep the tag space less populated.
+  //    This should enable faster listing/sorting of the expiry tags by the garbage-collector.
+  return {
+    bytes: `refs/heads/kv/values/${uuid}/bytes`,
+    type: `refs/heads/kv/values/${uuid}/type`,
+    key: `refs/heads/kv/keys/${uuid}/key`,
+    expiry: `refs/tags/kv/expiries/${uuid}/dayID`
+  }
+}
+
 function encodeCommitMsg ({ mimeType, extension } = {}) {
   if (mimeType && extension) {
     return `${mimeType};extension=${extension}`;
@@ -50,7 +70,8 @@ export default class Database {
     const refUpdates = [];
     for (const type of types.types) {
       const { commitHash } = await this.commitTyped(type, { encrypt: false });
-      refUpdates.push({ afterOid: commitHash, name: `refs/tags/kv/types/${type}` });
+      refUpdates.push({ afterOid: commitHash, name: `refs/tags/kv/types/${type}/type` });
+      // In `name` using 'type' suffix alongwith 'kv/types' prefix. See comments for getRefs() above.
     }
     await this.repository.updateRefs(refUpdates);
   }
@@ -134,12 +155,13 @@ export default class Database {
       if (overwrite === true) existingKeyCommitHash = keyCommitHash;
     }
 
+    const refs = getRefs(uuid);
     try {
       await this.repository.updateRefs([
-        { beforeOid: existingKeyCommitHash, afterOid: keyCommitHash, name: `refs/tags/kv/${uuid}` },
-        { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
-        { beforeOid: typesToCommitHash.get(oldValType), afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` },
-        { afterOid: expiryCommitHash, name: `kv/${uuid}/expiry` }
+        { beforeOid: existingKeyCommitHash, afterOid: keyCommitHash, name: refs.key },
+        { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: refs.bytes },
+        { beforeOid: typesToCommitHash.get(oldValType), afterOid: typesToCommitHash.get(valType), name: refs.type },
+        { afterOid: expiryCommitHash, name: refs.expiry }
       ]);
 
       return { uuid, cdnLinks, expiry };
@@ -155,16 +177,17 @@ export default class Database {
 
   async has (key) {
     const { uuid } = await this.keyToUuid(key);
-    return this.repository.hasRef(`refs/tags/kv/${uuid}`);
+    return this.repository.hasRef(getRefs(uuid).key);
     // TODO: Also check for stale keys, that haven't been garbage-collected (GC) yet
   }
 
   // Returns: <object>
   async #read (key) {
     const { uuid } = await this.keyToUuid(key);
-    const bytesBranch = `kv/${uuid}/value/bytes`;
-    const typeBranch = `kv/${uuid}/value/type`;
-    const expiryBranch = `kv/${uuid}/expiry`;
+    const refs = getRefs(uuid);
+    const bytesRef = refs.bytes;
+    const typeRef = refs.type;
+    const expiryRef = refs.expiry;
 
     let valBytesCommitHash, valBytesCommitMessage, valBytesBlobHash, valTypeCommitHash;
     let expiryCommitHash, expiryId;
@@ -173,10 +196,10 @@ export default class Database {
       // Not encrypting expiryId allows it to be read as text using GraphQL!
       const { bytes, type, expiry } = await this.repository.graphql(
         `
-          query($id: ID!, $bytesBranch: String!, $typeBranch: String!, $expiryBranch: String!, $path: String!) {
+          query($id: ID!, $bytesRef: String!, $typeRef: String!, $expiryRef: String!, $path: String!) {
             node(id: $id) {
               ... on Repository {
-                bytes: ref(qualifiedName: $bytesBranch) {
+                bytes: ref(qualifiedName: $bytesRef) {
                   target {
                     oid
                     ... on Commit {
@@ -187,12 +210,12 @@ export default class Database {
                     }
                   }
                 }
-                type:ref(qualifiedName: $typeBranch) {
+                type:ref(qualifiedName: $typeRef) {
                   target {
                     oid
                   }
                 }
-                expiry:ref(qualifiedName: $expiryBranch) {
+                expiry:ref(qualifiedName: $expiryRef) {
                   target {
                     oid
                     ... on Commit {
@@ -212,9 +235,9 @@ export default class Database {
         `,
         {
           id: this.repository.id,
-          bytesBranch: `refs/heads/${bytesBranch}`,
-          typeBranch: `refs/heads/${typeBranch}`,
-          expiryBranch: `refs/heads/${expiryBranch}`,
+          bytesRef,
+          typeRef,
+          expiryRef,
           path: txtView
         }
       )
@@ -227,9 +250,9 @@ export default class Database {
       expiryId = expiry?.target?.file?.object?.text;
     } else {
       [valBytesCommitHash, valTypeCommitHash, expiryCommitHash] = await Promise.all([
-        this.repository.refToCommitHash(bytesBranch),
-        this.repository.refToCommitHash(typeBranch),
-        this.repository.refToCommitHash(expiryBranch)
+        this.repository.refToCommitHash(bytesRef),
+        this.repository.refToCommitHash(typeRef),
+        this.repository.refToCommitHash(expiryRef)
       ]);
     }
 
