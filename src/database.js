@@ -7,9 +7,40 @@ import Repository from './utils/github.js';
 import { hexToBase64Url, base64ToHex } from './utils/conversions.js';
 
 const defaultPaths = ['bytes', 'view.txt', 'view.json'];
+const txtView = 'view.txt'; // Safer than `bytes` because it has plain/text extension.
+// Using `bytes` breaks the esm.sh CDN link.
 
 const typesToCommitHash = new Ambimap();
 const commitHashToTypes = typesToCommitHash.inv;
+
+// Brief: Get git-references for the given key-uuid.
+// Param: uuid <string>
+function getRefs ( uuid ) {
+  // Designed such that listing these refs using `git` command or the GitHub REST API is performant.
+  // Pattern is matched from the tail of the ref with: `git ls-remote --branches|--tags <pattern>`
+  //   Therefore, better use a suffix instead of a prefix for glob-less (for performance) patterns
+  // GitHub REST and GraphQL APIs, in contrast, only take a prefix to list the matching refs.
+  // All the following refs thus have both a unique suffix (e.g. <uuid>/key) and
+  //   a unique prefix (e.g. kv/keys) to cater to both git CLI and GitHub APIs respectively.
+  // Both git CLI and GitHub API can be asked to limit search for matching refs to branches or tags.
+  //   Therefore, keeping only the keys in tags to keep the tag space less populated and facilitate
+  //   performance while listing all keys.
+  // Also respecting Git semantics: branches represent dynamic references and tags, static.
+  // Avoiding non-standard custom refs (i.e. refs/<custom>) for portability and future-proofing.
+
+  // Ref name format: refs/heads|tags/kv/<type prefix>/<uuid>/<type suffix>
+  return {
+    bytes: `refs/heads/kv/values/${uuid}/bytes`,
+    type: `refs/heads/kv/values/${uuid}/type`,
+    expiry: `refs/heads/kv/expiries/${uuid}/dayID`,
+    key: `refs/tags/kv/keys/${uuid}/key`
+  }
+}
+
+// Brief: Inverse of getRefs(uuid)
+function refToUuid (ref) {
+  return ref[4];
+}
 
 function encodeCommitMsg ({ mimeType, extension } = {}) {
   if (mimeType && extension) {
@@ -29,6 +60,8 @@ function decodeCommitMsg (message) {
 export default class Database {
   repository;
 
+  // Note: Returns expiry instead of ttl, as ttl is meaningful only w.r.t the exact time it is returned.
+  // Note: undefined in undefined out
   async commitTyped (input, { encrypt, push } = {}) {
     if (input === undefined) return {};
     const { type, mimeType, bytes, extension } = await types.typedToBytes(input);
@@ -47,7 +80,8 @@ export default class Database {
     const refUpdates = [];
     for (const type of types.types) {
       const { commitHash } = await this.commitTyped(type, { encrypt: false });
-      refUpdates.push({ afterOid: commitHash, name: `refs/tags/kv/types/${type}` });
+      refUpdates.push({ afterOid: commitHash, name: `refs/tags/kv/types/${type}/type` });
+      // In `name` using 'type' suffix alongwith 'kv/types' prefix. See comments for getRefs() above.
     }
     await this.repository.updateRefs(refUpdates);
   }
@@ -80,66 +114,90 @@ export default class Database {
     const [type, base64CommitHash] = uuid.split('/');
     const commitHash = base64ToHex(base64CommitHash);
     const [bytes, commitMsg] = await Promise.all([
-      this.repository.fetchCommitContent(commitHash),
+      this.repository.fetchCommitContent(commitHash, { path: txtView }),
       type === 'Blob' ? this.repository.fetchCommitMessage(commitHash) : ''
     ]);
     const { mimeType } = decodeCommitMsg(commitMsg);
     return types.bytesToTyped({ type, mimeType, bytes });
   }
 
-  //Note: For val = undefined, create() with overwrite is equivalent to delete()
-  async create (key, val, { overwrite = false, ttl } = {}) {
-    if (val === undefined) {
-      if (overwrite) {
-        await this.delete(key);
-      } else {
-        if (await this.has(key)) throw new Error('Key exists');
-      }
-      return {};
-    } 
+  // Note: For val = undefined, create() with overwrite is equivalent to delete()
+  // Note: overwrite: true (key must pre-exist), false (key must not pre-exist), undefined (create key anyway)
+  async create (key, val, { overwrite, ttl, oldValue } = {}) {
+    let pushKey, existingKeyCommitHash;
+    switch (overwrite) {
+      case true:
+        pushKey = false;
+        break;
+      case false:
+        if (oldValue !== undefined) throw new Error('Cannot have oldValue when overwrite: false');
+        existingKeyCommitHash = null;
+        // Using fall-through to achieve default behavior
+      default:
+        pushKey = true;
+    }
+    
+    let expiry, expiryId;
+    if (Number.isFinite(ttl)) {
+      expiry = x.getExpiry(ttl);
+      expiryId = x.dateToId(expiry);
+    }
 
-    const expiryId = ttl !== undefined ? x.dateToId(x.getExpiry(ttl)) : undefined;
     // Using Promise.all to parallelize network IO
-    const [
+    let [
       { uuid, commitHash: keyCommitHash },
       { commitHash: valBytesCommitHash, type: valType, cdnLinks },
-      { commitHash: expiryCommitHash }
+      { commitHash: expiryCommitHash },
+      { commitHash: oldValBytesCommitHash, type: oldValType }
     ] = await Promise.all([
-      this.keyToUuid(key, { push: true }),
-      this.commitTyped(val),
-      this.commitTyped(expiryId, { encrypt: false })
+      this.keyToUuid(key, { push: pushKey }),
+      this.commitTyped(val, { push: true }),
+      this.commitTyped(expiryId, { push: true, encrypt: false }),
       // Not encrypting expiryId allows it to be read as text using GraphQL in #read()
+      this.commitTyped(oldValue, { push: false })
     ]);
-    const existingKeyCommitHash = overwrite ? undefined : '0000000000000000000000000000000000000000';
+    
+    // Prep for deletion if val === undefined
+    if (val === undefined) {
+      keyCommitHash = null;
+      expiryCommitHash = null;
+    } else {
+      if (overwrite === true) existingKeyCommitHash = keyCommitHash;
+    }
+
+    const refs = getRefs(uuid);
     try {
       await this.repository.updateRefs([
-        { beforeOid: existingKeyCommitHash, afterOid: keyCommitHash, name: `refs/tags/kv/${uuid}` },
-        { afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
-        { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` },
-        { afterOid: expiryCommitHash, name: `kv/${uuid}/expiry` }
+        { beforeOid: existingKeyCommitHash, afterOid: keyCommitHash, name: refs.key },
+        { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: refs.bytes },
+        { beforeOid: typesToCommitHash.get(oldValType), afterOid: typesToCommitHash.get(valType), name: refs.type },
+        { afterOid: expiryCommitHash, name: refs.expiry }
       ]);
-      return { uuid, cdnLinks };
+
+      return { uuid, cdnLinks, expiry };
     } catch (err) {
-      if (!overwrite && await this.has(key)) throw new Error('Key exists');
-      if (await this.repository.hasCommit(typesToCommitHash.get(valType)) === false) {
+      if (overwrite === false && await this.has(key) === true) throw new Error('Key exists');
+      if (overwrite === true && await this.has(key) === false) throw new Error('Nothing to overwrite');
+      if (valType && await this.repository.hasCommit(typesToCommitHash.get(valType)) === false) {
         throw new Error('Database not initialized. Run db.init()');
       }
-      throw err;
+      throw new Error('Failed', { cause: err });
     }
   }
 
   async has (key) {
     const { uuid } = await this.keyToUuid(key);
-    return this.repository.hasRef(`refs/tags/kv/${uuid}`);
+    return this.repository.hasRef(getRefs(uuid).key);
     // TODO: Also check for stale keys, that haven't been garbage-collected (GC) yet
   }
 
   // Returns: <object>
   async #read (key) {
-    const { uuid, commitHash: keyCommitHash } = await this.keyToUuid(key);
-    const bytesBranch = `kv/${uuid}/value/bytes`;
-    const typeBranch = `kv/${uuid}/value/type`;
-    const expiryBranch = `kv/${uuid}/expiry`;
+    const { uuid } = await this.keyToUuid(key);
+    const refs = getRefs(uuid);
+    const bytesRef = refs.bytes;
+    const typeRef = refs.type;
+    const expiryRef = refs.expiry;
 
     let valBytesCommitHash, valBytesCommitMessage, valBytesBlobHash, valTypeCommitHash;
     let expiryCommitHash, expiryId;
@@ -148,10 +206,10 @@ export default class Database {
       // Not encrypting expiryId allows it to be read as text using GraphQL!
       const { bytes, type, expiry } = await this.repository.graphql(
         `
-          query($id: ID!, $bytesBranch: String!, $typeBranch: String!, $expiryBranch: String!, $path: String!) {
+          query($id: ID!, $bytesRef: String!, $typeRef: String!, $expiryRef: String!, $path: String!) {
             node(id: $id) {
               ... on Repository {
-                bytes: ref(qualifiedName: $bytesBranch) {
+                bytes: ref(qualifiedName: $bytesRef) {
                   target {
                     oid
                     ... on Commit {
@@ -162,12 +220,12 @@ export default class Database {
                     }
                   }
                 }
-                type:ref(qualifiedName: $typeBranch) {
+                type:ref(qualifiedName: $typeRef) {
                   target {
                     oid
                   }
                 }
-                expiry:ref(qualifiedName: $expiryBranch) {
+                expiry:ref(qualifiedName: $expiryRef) {
                   target {
                     oid
                     ... on Commit {
@@ -187,10 +245,10 @@ export default class Database {
         `,
         {
           id: this.repository.id,
-          bytesBranch: `refs/heads/${bytesBranch}`,
-          typeBranch: `refs/heads/${typeBranch}`,
-          expiryBranch: `refs/heads/${expiryBranch}`,
-          path: 'bytes'
+          bytesRef,
+          typeRef,
+          expiryRef,
+          path: txtView
         }
       )
         .then((response) => response.node);
@@ -199,16 +257,16 @@ export default class Database {
       valBytesCommitMessage = bytes?.target?.message;
       valBytesBlobHash = bytes?.target?.file?.oid;
       valTypeCommitHash = type?.target?.oid;
-      expiryId = expiry?.target?.file?.object?.text;
+      expiryId = Number(expiry?.target?.file?.object?.text);
     } else {
       [valBytesCommitHash, valTypeCommitHash, expiryCommitHash] = await Promise.all([
-        this.repository.refToCommitHash(bytesBranch),
-        this.repository.refToCommitHash(typeBranch),
-        this.repository.refToCommitHash(expiryBranch)
+        this.repository.refToCommitHash(bytesRef),
+        this.repository.refToCommitHash(typeRef),
+        this.repository.refToCommitHash(expiryRef)
       ]);
     }
 
-    if (valBytesCommitHash === undefined) return { uuid };
+    if (valBytesCommitHash === undefined) return {};
 
     const valType = commitHashToTypes.get(valTypeCommitHash);
     if (valType === 'Blob' && valBytesCommitMessage === undefined) {
@@ -220,32 +278,28 @@ export default class Database {
     // Compare fetchCommitContent() in ./github.js
     if (this.repository.isPublic) {
       // Use CDN to fetch
-      valBytesPromise = this.repository.fetchCommitContent(valBytesCommitHash);
+      valBytesPromise = this.repository.fetchCommitContent(valBytesCommitHash, { path: txtView });
     } else {
       // Use GitHub REST API to fetch directly from the blob
       valBytesPromise = this.repository.fetchBlobContent(valBytesBlobHash);
     }
 
     if (expiryId === undefined && expiryCommitHash) {
-      const expiryBytes = await this.repository.fetchCommitContent(expiryCommitHash, { decrypt: false });
+      const expiryBytes = await this.repository.fetchCommitContent(expiryCommitHash, { decrypt: false, path: txtView });
       expiryId = types.bytesToTyped({
         bytes: expiryBytes,
         type: 'Number'
       });
     };
-    if (x.isStale(expiryId)) return { uuid }; // Return undefined value for expired data
+    if (x.isStale(expiryId)) return {}; // Return undefined value for expired data
 
     return {
-      uuid,
-      keyCommitHash,
       value: types.bytesToTyped({
         bytes: await valBytesPromise,
         type: valType,
         mimeType
       }),
-      valBytesCommitHash,
-      expiryId,
-      expiryCommitHash
+      expiry: expiryId ? x.idToDate(expiryId) : undefined
     };
   }
 
@@ -254,61 +308,33 @@ export default class Database {
     return value;
   }
 
-  // Brief: modifier(oldVal) => newVal. Deletes the key if newVal is undefined.
+  // Brief: modifier(oldValue) => newValue. Deletes the key if newValue is undefined.
   //   No-op, i.e. doesn't update, if modifier throws error.
   // Params: modifier <function>, async or not
   // Returns: { oldValue, currentValue, cdnLinks } <object>
   // Note: keepTtl takes precedence over ttl, if both truthy
   async update (key, modifier, { keepTtl=false, ttl } = {}) {
-    const expiryId = ttl !== undefined ? x.dateToId(x.getExpiry(ttl)) : undefined;
-    const {
-      uuid,
-      keyCommitHash,
-      value: oldVal,
-      valBytesCommitHash: oldValBytesCommitHash,
-      expiryCommitHash: oldExpiryCommitHash
-    } = await this.#read(key);
-    if (oldVal === undefined) throw new Error('Nothing to update. Use create method instead.');
+    const { value: oldValue, expiry: oldExpiry } = await this.#read(key);
 
-    // If old value is an object, (null is also erroneously recognized as object) modifier() might
-    // modify it in place. To return the old value as is, in that case, clone it.
-    const oldValClone = typeof oldVal === 'object' && oldVal !== null ?
-      structuredClone(oldVal) : oldVal;
-
-    const val = await modifier(oldVal);
-
-    const [
-      { commitHash: valBytesCommitHash, type: valType, cdnLinks },
-      { commitHash: newExpiryCommitHash }
-    ] = await Promise.all([
-      this.commitTyped(val),
-      this.commitTyped(expiryId, { encrypt: false })
-      // Not encrypting expiryId allows it to be read as text using GraphQL in #read()
-    ]);
-    
-    let expiryCommitHash, newKeyCommitHash;
-    if (valBytesCommitHash) {
-      expiryCommitHash = keepTtl ? oldExpiryCommitHash : newExpiryCommitHash;
-      newKeyCommitHash = keyCommitHash;
-    }
-
+    let newValue;
     try {
-      await this.repository.updateRefs([
-        { beforeOid: oldValBytesCommitHash, afterOid: valBytesCommitHash, name: `kv/${uuid}/value/bytes` },
-        { afterOid: typesToCommitHash.get(valType), name: `kv/${uuid}/value/type` },
-        { afterOid: expiryCommitHash, name: `kv/${uuid}/expiry` },
-        { afterOid: newKeyCommitHash, name: `refs/tags/kv/${uuid}` }
-      ]);
-
-      return {
-        uuid,
-        oldValue: oldValClone,
-        currentValue: val,
-        cdnLinks
-      };
-    } catch (error) {
-      throw new Error('Update failed', { cause: error });
+      // If old value is an object, modifier() might modify it in place.
+      // To return the old value as is, clone it.
+      // null is also recognized as object by JavaScript, so take that into account.
+      if (typeof oldValue === 'object' && oldValue !== null) {
+        newValue = await modifier(structuredClone(oldValue));
+      } else {
+        newValue = await modifier(oldValue);
+      }
+    } catch (err) {
+      throw new Error('modifier() threw error. See "cause" for details.', { cause: err });
     }
+
+    // Override the provided ttl, if any, in case keepTtl is opted for
+    if (keepTtl) ttl = x.getTtlDays(oldExpiry);
+
+    const obj = this.create(key, newValue, { overwrite: true, ttl, oldValue });
+    return { ...obj, oldValue, newValue };
   }
 
   async increment (key, incr = 1) {
@@ -329,22 +355,32 @@ export default class Database {
     return this.update(key, modifier);
   }
 
-  async delete (...keys) {
-    const input = [];
-    for (const key of keys) {
+  // Note: If val is provided delete key only if key => val
+  async delete (key, val = undefined) {
+    return this.create(key, undefined, { oldValue: val });
+  }
 
-      // This is a hack without which delete() fails often
-      if (! await this.has(key)) continue;
-      // Might be due to a bug in the GitHub APIs
+  async expire (key, ttl) {
+    const expiryId = x.dateToId( x.getExpiry(ttl) );
 
-      const { uuid } = await this.keyToUuid(key);
-      input.push(
-        { name: `kv/${uuid}/value/bytes` },
-        { name: `kv/${uuid}/value/type` },
-        { name: `kv/${uuid}/expiry` },
-        { name: `refs/tags/kv/${uuid}` }
-      );
+    const [ { uuid, commitHash: keyCommitHash }, { commitHash: expiryCommitHash } ] = await Promise.all([
+      this.keyToUuid(key),
+      this.commitTyped(expiryId, { push: true, encrypt: false })
+    ]);
+    
+    const refs = getRefs(uuid);
+    try {
+      await this.repository.updateRefs([
+        { beforeOid: keyCommitHash, afterOid: keyCommitHash, name: refs.key },
+        { afterOid: expiryCommitHash, name: refs.expiry }
+      ]);
+    } catch (err) {
+      if (await this.has(key) === false) throw new Error('Nothing to expire');
+      throw new Error('Failed', { cause: err });
     }
-    await this.repository.updateRefs(input);
+  }
+
+  async gc (now = new Date()) {
+    
   }
 }
