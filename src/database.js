@@ -360,11 +360,27 @@ export default class Database {
     return this.create(key, undefined, { oldValue: val });
   }
 
-  async expire (ttl) {
+  async expire (key, ttl) {
+    const expiryId = x.dateToId( x.getExpiry(ttl) );
+
+    const [ { uuid, commitHash: keyCommitHash }, { commitHash: expiryCommitHash } ] = await Promise.all([
+      this.keyToUuid(key),
+      this.commitTyped(expiryId, { push: true, encrypt: false })
+    ]);
     
+    const refs = getRefs(uuid);
+    try {
+      await this.repository.updateRefs([
+        { beforeOid: keyCommitHash, afterOid: keyCommitHash, name: refs.key },
+        { afterOid: expiryCommitHash, name: refs.expiry }
+      ]);
+    } catch (err) {
+      if (await this.has(key) === false) throw new Error('Nothing to expire');
+      throw new Error('Failed', { cause: err });
+    }
   }
 
-  async gc () {
+  async gc (now = new Date()) {
     
   }
 }
