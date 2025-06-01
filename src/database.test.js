@@ -40,6 +40,7 @@ describe('Testing database', () => {
     const key = { hello: 'world!' };
     const val = { how: 'are you?' };
     const { uuid } = await kv.create(key, val);
+    await setTimeout(2000);
     assert.deepStrictEqual(await kvUnauthenticated.uuidToKey(uuid), key);
     assert.deepStrictEqual(await kv.read(key), val);
     await assert.rejects(kv.create(key, val, { overwrite: false }), { message: 'Key exists' });

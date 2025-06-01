@@ -138,7 +138,7 @@ export default class Database {
     }
     
     let expiry, expiryId;
-    if (ttl) {
+    if (Number.isFinite(ttl)) {
       expiry = x.getExpiry(ttl);
       expiryId = x.dateToId(expiry);
     }
@@ -257,7 +257,7 @@ export default class Database {
       valBytesCommitMessage = bytes?.target?.message;
       valBytesBlobHash = bytes?.target?.file?.oid;
       valTypeCommitHash = type?.target?.oid;
-      expiryId = expiry?.target?.file?.object?.text;
+      expiryId = Number(expiry?.target?.file?.object?.text);
     } else {
       [valBytesCommitHash, valTypeCommitHash, expiryCommitHash] = await Promise.all([
         this.repository.refToCommitHash(bytesRef),
