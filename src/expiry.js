@@ -57,8 +57,9 @@ export function idToDate (id) {
 }
 
 export function getExpiry (ttlDays, now = new Date()) {
-  if (isNaN(ttlDays) || ttlDays < 0 || ttlDays > maxTtlDays - 1) {
-    throw new Error(`TTL must be within [0, ${maxTtlDays - 1}]`);
+  // ttlDays = -1 is allowed to test/debug GC (garbage-collection) instantly
+  if (isNaN(ttlDays) || ttlDays < -1 || ttlDays > maxTtlDays - 1) {
+    throw new Error(`TTL must be within [-1, ${maxTtlDays - 1}]`);
   }
   return date.addDays(getToday(now), Math.floor(ttlDays));
 }

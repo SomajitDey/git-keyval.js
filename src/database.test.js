@@ -42,7 +42,7 @@ describe('Testing database', () => {
     const { uuid } = await kv.create(key, val);
     assert.deepStrictEqual(await kvUnauthenticated.uuidToKey(uuid), key);
     assert.deepStrictEqual(await kv.read(key), val);
-    assert.rejects(kv.create(key, val), { message: 'Key exists' });
+    await assert.rejects(kv.create(key, val, { overwrite: false }), { message: 'Key exists' });
     const modifier = (obj) => {
       obj.how = 'are you now?';
       obj.who = 'are  you?';
@@ -52,8 +52,8 @@ describe('Testing database', () => {
     await kv.update(key, modifier);
     await setTimeout(2000);
     assert.deepStrictEqual(await kv.read(key), modifiedVal);
-    assert.rejects(kv.increment(key, -4), { message: 'Old value must be a Number' });
-    assert.rejects(kv.toggle(key), { message: 'Old value must be a Boolean' });
+    await assert.rejects(kv.increment(key, -4), new Error('modifier() threw error. See "cause" for details.', { cause: new Error('Old value must be a Number') }));
+    await assert.rejects(kv.toggle(key), new Error('modifier() threw error. See "cause" for details.', { cause: new Error('Old value must be a Boolean') }));
 
     const blob = new Blob(['hello', 'world'], { type: 'custom/mime' });
     await kv.create(key, blob, { overwrite: true });
@@ -81,5 +81,6 @@ describe('Testing database', () => {
     await setTimeout(2000);
     assert.deepStrictEqual(await kv.has(key), false);
     assert.deepStrictEqual(await kv.read(key), undefined);
+    await assert.rejects(kv.create(key, val, { overwrite: true }), { message: 'Nothing to overwrite' });
   });
 });

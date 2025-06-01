@@ -23,14 +23,23 @@ function getRefs ( uuid ) {
   // All the following refs thus have both a unique suffix (e.g. <uuid>/key) and
   //   a unique prefix (e.g. kv/keys) to cater to both git CLI and GitHub APIs respectively.
   // Both git CLI and GitHub API can be asked to limit search for matching refs to branches or tags.
-  //   Therefore, keeping only the expiries in tags to keep the tag space less populated.
-  //    This should enable faster listing/sorting of the expiry tags by the garbage-collector.
+  //   Therefore, keeping only the keys in tags to keep the tag space less populated and facilitate
+  //   performance while listing all keys.
+  // Also respecting Git semantics: branches represent dynamic references and tags, static.
+  // Avoiding non-standard custom refs (i.e. refs/<custom>) for portability and future-proofing.
+
+  // Ref name format: refs/heads|tags/kv/<type prefix>/<uuid>/<type suffix>
   return {
     bytes: `refs/heads/kv/values/${uuid}/bytes`,
     type: `refs/heads/kv/values/${uuid}/type`,
-    key: `refs/heads/kv/keys/${uuid}/key`,
-    expiry: `refs/tags/kv/expiries/${uuid}/dayID`
+    expiry: `refs/heads/kv/expiries/${uuid}/dayID`,
+    key: `refs/tags/kv/keys/${uuid}/key`
   }
+}
+
+// Brief: Inverse of getRefs(uuid)
+function refToUuid (ref) {
+  return ref[4];
 }
 
 function encodeCommitMsg ({ mimeType, extension } = {}) {
@@ -51,6 +60,7 @@ function decodeCommitMsg (message) {
 export default class Database {
   repository;
 
+  // Note: Returns expiry instead of ttl, as ttl is meaningful only w.r.t the exact time it is returned.
   // Note: undefined in undefined out
   async commitTyped (input, { encrypt, push } = {}) {
     if (input === undefined) return {};
@@ -348,5 +358,13 @@ export default class Database {
   // Note: If val is provided delete key only if key => val
   async delete (key, val = undefined) {
     return this.create(key, undefined, { oldValue: val });
+  }
+
+  async expire (ttl) {
+    
+  }
+
+  async gc () {
+    
   }
 }
