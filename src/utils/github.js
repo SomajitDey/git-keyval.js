@@ -96,7 +96,7 @@ export default class Repository {
         if (err.status === 404) {
           return false;
         } else {
-          throw new Error(`GitHub API network error: ${err.status}`);
+          throw new Error(`GitHub API network error: ${err.status}`, { cause: err });
         }
       });
   }
@@ -120,7 +120,7 @@ export default class Repository {
         if (err.status === 404) {
           return false;
         } else {
-          throw new Error(`GitHub API network error: ${err.status}`);
+          throw new Error(`GitHub API network error: ${err.status}`, { cause: err });
         }
       });
   }
@@ -353,5 +353,14 @@ export default class Repository {
     `https://esm.sh/gh/${user}/${repo}@${commitHash}/${path}`,
     `https://raw.githubusercontent.com/${user}/${repo}/${commitHash}/${path}`
     ];
+  }
+
+  // Brief: Returns all branches pointing to the provided commit at their HEAD.
+  // Params: commitHash <string>
+  async listBranchesTo (commitHash) {
+    const dataArray = await this.request('GET /repos/{owner}/{repo}/commits/{commitHash}/branches-where-head', {
+      commitHash
+    }).then((result) => result.data);
+    return dataArray.map((obj) => obj.name);
   }
 }
