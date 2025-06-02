@@ -354,4 +354,13 @@ export default class Repository {
     `https://raw.githubusercontent.com/${user}/${repo}/${commitHash}/${path}`
     ];
   }
+
+  // Brief: Returns all branches pointing to the provided commit at their HEAD.
+  // Params: commitHash <string>
+  async listBranchesTo (commitHash) {
+    const dataArray = await this.request('GET /repos/{owner}/{repo}/commits/{commitHash}/branches-where-head', {
+      commitHash
+    }).then((result) => result.data);
+    return dataArray.map((obj) => obj.name);
+  }
 }

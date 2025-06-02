@@ -39,7 +39,7 @@ describe('Testing github', () => {
 
   it(
       `commitBytes, bytesToCommitHash, fetchCommitContent, cdnLinks, updateRefs,
-      refToCommitHash, hasCommit, hasRef`,
+      refToCommitHash, hasCommit, hasRef, listBranchesTo`,
       async () => {
     const bytes = crypto.getRandomValues(new Uint8Array(14));
     const commitHash = await repository.commitBytes(bytes);
@@ -52,6 +52,7 @@ describe('Testing github', () => {
     }
     const branch = 'test/target/' + commitHash;
     await repository.updateRefs([{ afterOid: commitHash, name: branch }]);
+    assert.deepStrictEqual(await repository.listBranchesTo(commitHash), [ branch ]);
     assert.ok(await repository.hasRef(branch));
     assert.equal(await repository.refToCommitHash(`refs/heads/` + branch), commitHash);
     assert.equal(await repository.refToCommitHash(branch), commitHash);
