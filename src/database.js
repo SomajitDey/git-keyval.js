@@ -72,7 +72,10 @@ export default class Database {
     const message = encodeCommitMsg({ mimeType, extension });
     const commitHash = await this.repository.commitBytes(bytes, { message, paths, encrypt, push });
     let cdnLinks;
-    if (extension) cdnLinks = this.repository.cdnLinks(commitHash, `view.${extension}`);
+    const isEncrypted = encrypt ?? this.repository.encrypted;
+    if (extension && isEncrypted === false) {
+      cdnLinks = this.repository.cdnLinks(commitHash, `view.${extension}`);
+    }
     return { commitHash, type, cdnLinks };
   }
 
