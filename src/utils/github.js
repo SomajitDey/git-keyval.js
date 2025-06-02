@@ -96,7 +96,7 @@ export default class Repository {
         if (err.status === 404) {
           return false;
         } else {
-          throw new Error(`GitHub API network error: ${err.status}`);
+          throw new Error(`GitHub API network error: ${err.status}`, { cause: err });
         }
       });
   }
@@ -120,7 +120,7 @@ export default class Repository {
         if (err.status === 404) {
           return false;
         } else {
-          throw new Error(`GitHub API network error: ${err.status}`);
+          throw new Error(`GitHub API network error: ${err.status}`, { cause: err });
         }
       });
   }

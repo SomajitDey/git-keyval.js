@@ -39,7 +39,8 @@ function getRefs ( uuid ) {
 
 // Brief: Inverse of getRefs(uuid)
 function refToUuid (ref) {
-  return ref[4];
+  if (!ref.startsWith('refs/')) ref = 'refs/heads/' + ref;
+  return ref.split('/').slice(4, -1).join('/');
 }
 
 function encodeCommitMsg ({ mimeType, extension } = {}) {
@@ -383,7 +384,36 @@ export default class Database {
     }
   }
 
+  // Params: uuids <array or iterator>
+  async deleteUUIDs (uuids) {
+    const refUpdates = [];
+    for (const uuid of uuids) {
+      const refs = Object.values(getRefs(uuid)); // Array of all refs for the given UUID
+      refs.forEach((ref) => {
+        refUpdates.push({ name: ref, afterOid: null });
+      });
+    }
+    return this.repository.updateRefs(refUpdates);
+  }
+  
   async gc (now = new Date()) {
+    const { commitHash: expiryCommitHash } = await this.commitTyped(x.yesterdayId(now), {
+      encrypt: false,
+      push: false
+    });
+
+    const expiryRefs = await this.repository.listBranchesTo(expiryCommitHash);
     
+    const promises = [];
+    const batchSize = 10;
+    for (let i = 0; i < expiryRefs.length; i += batchSize) {
+      promises.push(
+        this.deleteUUIDs(
+          expiryRefs.slice(i, i + batchSize)
+            .map((ref) => refToUuid(ref))
+        )
+      );
+    };
+    await Promise.all(promises);
   }
 }

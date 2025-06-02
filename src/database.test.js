@@ -84,4 +84,20 @@ describe('Testing database', () => {
     assert.deepStrictEqual(await kv.read(key), undefined);
     await assert.rejects(kv.create(key, val, { overwrite: true }), { message: 'Nothing to overwrite' });
   });
+  
+  it('gc()', async () => {
+    const keys = [1,2,3,4,5];
+    const val = 2;
+    const promises = [];
+    for (const key of keys) {
+      promises.push(kv.create(key, val, { ttl: -1 }));
+    };
+    await Promise.all(promises);
+
+    await kv.gc();
+
+    for (const key of keys) {
+      assert.equal(await kv.has(key), false);
+    };
+  });
 });
