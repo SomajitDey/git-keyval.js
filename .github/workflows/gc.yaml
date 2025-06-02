@@ -1,0 +1,38 @@
+# Brief: This workflow initializes the upstream repository by pushing the type commits
+
+name: GC
+
+on:
+  workflow_dispatch: # Enables manual triggering
+  schedule:
+    - cron: '30 * * * *' # Triggered at the 30th min of every hour
+    
+
+concurrency:
+  group: ${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+
+  gc:
+    
+    permissions:
+      contents: write
+    
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check out current (i.e. triggering) branch
+        uses: actions/checkout@v4
+      - name: Set up Node runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          check-latest: false
+          cache: npm
+      - name: Install dependencies
+        run: npm ci # Clean, frozen install. Doesn't modify package.json or package-lock.json
+      - name: Garbage collection
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: src/gc.js "${GITHUB_REPOSITORY}"
