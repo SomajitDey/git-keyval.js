@@ -384,6 +384,7 @@ export default class Database {
     }
   }
 
+  // Brief: Delete all refs related to the given UUIDs atomically at once.
   // Params: uuids <array or iterator>
   async deleteUUIDs (uuids) {
     const refUpdates = [];
@@ -396,14 +397,20 @@ export default class Database {
     return this.repository.updateRefs(refUpdates);
   }
   
+  // Brief: Garbage Collection
+  // Param: now <Date>, optional. If passed, consider the given time as now.
   async gc (now = new Date()) {
     const { commitHash: expiryCommitHash } = await this.commitTyped(x.yesterdayId(now), {
       encrypt: false,
       push: false
     });
 
+    if (! await this.repository.hasCommit(expiryCommitHash)) return;
+    
     const expiryRefs = await this.repository.listBranchesTo(expiryCommitHash);
     
+    // Deleting too many refs at once may fail.
+    // Hence deleting small batches atomically at once, and multiple batches in parallel.
     const promises = [];
     const batchSize = 10;
     for (let i = 0; i < expiryRefs.length; i += batchSize) {
