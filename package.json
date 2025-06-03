@@ -43,7 +43,6 @@
   "files": [
     "README.md",
     "LICENSE",
-    "scripts/",
     "src/"
   ],
   "browser": "src/index.js",
