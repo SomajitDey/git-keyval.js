@@ -1,8 +1,6 @@
 name: Test
 
-on:
-  workflow_dispatch: # Enables manual triggering
-  push:
+on: [workflow_dispatch, push]
 
 concurrency:
   group: ${{ github.repository }}
