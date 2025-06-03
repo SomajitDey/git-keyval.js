@@ -10,7 +10,8 @@ import { config } from 'dotenv';
 config(); // Sourcing .env
 
 const passwd = process.env.PASSWORD;
-const ownerRepo = `${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}`;
+const ownerRepo = `${process.env.GH_REPO}`;
+const [owner, repo] = ownerRepo?.split('/') ?? [];
 const salt = textToBytes(ownerRepo);
 const iv = (bytes) => concatBytes([
   textToBytes(passwd),
@@ -20,17 +21,17 @@ const iv = (bytes) => concatBytes([
 const codec = await Codec.instantiate(passwd, salt, iv);
 
 const kv = await DB.instantiate({
-  owner: process.env.GITHUB_OWNER,
-  repo: process.env.GITHUB_REPO,
-  auth: process.env.GITHUB_AUTH,
+  owner,
+  repo,
+  auth: process.env.GH_TOKEN,
   encrypt: async (bytes) => codec.encrypt(bytes),
   decrypt: async (bytes) => codec.decrypt(bytes)
 });
 
 // Can't use unauthenticated for private repositories
 const kvUnauthenticated = kv.repository.isPublic ? await DB.instantiate({
-  owner: process.env.GITHUB_OWNER,
-  repo: process.env.GITHUB_REPO,
+  owner,
+  repo,
   encrypt: async (bytes) => codec.encrypt(bytes),
   decrypt: async (bytes) => codec.decrypt(bytes)
 }) : kv;

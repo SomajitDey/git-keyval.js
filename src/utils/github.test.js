@@ -7,10 +7,13 @@ import { config } from 'dotenv';
 
 config(); // Sourcing .env
 
+const ownerRepo = `${process.env.GH_REPO}`;
+const [owner, repo] = ownerRepo?.split('/') ?? [];
+
 const repository = await Repository.instantiate({
-  owner: process.env.GITHUB_OWNER,
-  repo: process.env.GITHUB_REPO,
-  auth: process.env.GITHUB_AUTH
+  owner,
+  repo,
+  auth: process.env.GH_TOKEN
 });
 
 describe('Testing github', () => {
