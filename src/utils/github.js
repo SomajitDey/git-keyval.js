@@ -211,17 +211,17 @@ export default class Repository {
       const { name, beforeOid, afterOid, force } = refUpdate;
 
       // If name is not a fully qualified name, format ref as branch
-      if ( !name.startsWith('refs/') ) refUpdate.name = `refs/heads/${name}`;
+      if (!name.startsWith('refs/')) refUpdate.name = `refs/heads/${name}`;
 
       // If beforeOid is null, ref shouldn't be pre-existing
-      if ( beforeOid === null ) refUpdate.beforeOid = defunct;
+      if (beforeOid === null) refUpdate.beforeOid = defunct;
 
       // If afterOid is nullish (undefined | null), format ref for deletion
       refUpdate.afterOid = afterOid ?? defunct;
 
       // Enable force update, if not opted out for
       refUpdate.force = force ?? true;
-    };
+    }
 
     await this.graphql(
   `

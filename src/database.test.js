@@ -29,12 +29,14 @@ const kv = await DB.instantiate({
 });
 
 // Can't use unauthenticated for private repositories
-const kvUnauthenticated = kv.repository.isPublic ? await DB.instantiate({
-  owner,
-  repo,
-  encrypt: async (bytes) => codec.encrypt(bytes),
-  decrypt: async (bytes) => codec.decrypt(bytes)
-}) : kv;
+const kvUnauthenticated = kv.repository.isPublic
+  ? await DB.instantiate({
+    owner,
+    repo,
+    encrypt: async (bytes) => codec.encrypt(bytes),
+    decrypt: async (bytes) => codec.decrypt(bytes)
+  })
+  : kv;
 
 describe('Testing database', () => {
   it('keyToUuid, uuidToKey, create, read, update, increment, toggle, delete', async () => {
@@ -85,14 +87,14 @@ describe('Testing database', () => {
     assert.deepStrictEqual(await kv.read(key).then(({ value }) => value), undefined);
     await assert.rejects(kv.create(key, val, { overwrite: true }), { message: 'Nothing to overwrite' });
   });
-  
+
   it('gc()', async () => {
-    const keys = [1,2,3,4,5];
+    const keys = [1, 2, 3, 4, 5];
     const val = 2;
     const promises = [];
     for (const key of keys) {
       promises.push(kv.create(key, val, { ttl: -1 }));
-    };
+    }
     await Promise.all(promises);
 
     await kv.gc();
@@ -100,6 +102,6 @@ describe('Testing database', () => {
     await setTimeout(2000);
     for (const key of keys) {
       assert.equal(await kv.has(key), false);
-    };
+    }
   });
 });

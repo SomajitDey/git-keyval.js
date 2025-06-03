@@ -45,27 +45,27 @@ describe('Testing github', () => {
       `commitBytes, bytesToCommitHash, fetchCommitContent, cdnLinks, updateRefs,
       refToCommitHash, hasCommit, hasRef, listBranchesTo`,
       async () => {
-    const bytes = crypto.getRandomValues(new Uint8Array(14));
-    const commitHash = await repository.commitBytes(bytes);
-    assert.ok(await repository.hasCommit(commitHash));
-    assert.equal(await repository.commitBytes(bytes, { push: false }), commitHash);
-    assert.deepStrictEqual(await repository.fetchCommitContent(commitHash), bytes);
-    const [cdnLink] = repository.cdnLinks(commitHash);
-    if (cdnLink) {
-      assert.deepStrictEqual(await fetch(cdnLink).then((res) => res.bytes()), bytes);
-    }
-    const branch = 'test/target/' + commitHash;
-    await repository.updateRefs([{ afterOid: commitHash, name: branch }]);
-    await setTimeout(2000);
-    assert.deepStrictEqual(await repository.listBranchesTo(commitHash), [ branch ]);
-    assert.ok(await repository.hasRef(branch));
-    assert.equal(await repository.refToCommitHash(`refs/heads/` + branch), commitHash);
-    assert.equal(await repository.refToCommitHash(branch), commitHash);
-    // Delete the branch
-    await repository.updateRefs([{ name: branch }]);
-    await setTimeout(2000);
-    assert.equal(await repository.refToCommitHash(branch), undefined);
-    assert.equal(await repository.hasRef(`refs/heads/` + branch), false);
-  }
+        const bytes = crypto.getRandomValues(new Uint8Array(14));
+        const commitHash = await repository.commitBytes(bytes);
+        assert.ok(await repository.hasCommit(commitHash));
+        assert.equal(await repository.commitBytes(bytes, { push: false }), commitHash);
+        assert.deepStrictEqual(await repository.fetchCommitContent(commitHash), bytes);
+        const [cdnLink] = repository.cdnLinks(commitHash);
+        if (cdnLink) {
+          assert.deepStrictEqual(await fetch(cdnLink).then((res) => res.bytes()), bytes);
+        }
+        const branch = 'test/target/' + commitHash;
+        await repository.updateRefs([{ afterOid: commitHash, name: branch }]);
+        await setTimeout(2000);
+        assert.deepStrictEqual(await repository.listBranchesTo(commitHash), [branch]);
+        assert.ok(await repository.hasRef(branch));
+        assert.equal(await repository.refToCommitHash('refs/heads/' + branch), commitHash);
+        assert.equal(await repository.refToCommitHash(branch), commitHash);
+        // Delete the branch
+        await repository.updateRefs([{ name: branch }]);
+        await setTimeout(2000);
+        assert.equal(await repository.refToCommitHash(branch), undefined);
+        assert.equal(await repository.hasRef('refs/heads/' + branch), false);
+      }
   );
 });

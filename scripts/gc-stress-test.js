@@ -22,13 +22,13 @@ const kv = await DB.instantiate({ owner, repo, auth });
 
 const val = 2; // Any random value; setting same value for all keys for efficiency
 
-describe(`Checking if GC can remove ${numKeys} stale keys`, () => {  
+describe(`Checking if GC can remove ${numKeys} stale keys`, () => {
   it('GC', async () => {
     // Create a large number of stale (ttl: -1) keys.
     const promises = [];
-    for (let i=0; i<numKeys; i++) {
+    for (let i = 0; i < numKeys; i++) {
       promises[i] = kv.create(i, val, { ttl: -1 });
-    };
+    }
     await Promise.all(promises);
 
     // GC now to remove all the stale keys
@@ -37,9 +37,9 @@ describe(`Checking if GC can remove ${numKeys} stale keys`, () => {
     await setTimeout(2000); // Waiting #milliseconds to let changes take effect across GitHub APIs
 
     // Checking if any stale key survived GC
-    for (let i=0; i<numKeys; i++) {
+    for (let i = 0; i < numKeys; i++) {
       promises[i] = kv.has(i).then((bool) => assert.equal(bool, false));
-    };
+    }
     await Promise.all(promises);
-  })
+  });
 });

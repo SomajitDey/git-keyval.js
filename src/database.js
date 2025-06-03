@@ -15,7 +15,7 @@ const commitHashToTypes = typesToCommitHash.inv;
 
 // Brief: Get git-references for the given key-uuid.
 // Param: uuid <string>
-function getRefs ( uuid ) {
+function getRefs (uuid) {
   // Designed such that listing these refs using `git` command or the GitHub REST API is performant.
   // Pattern is matched from the tail of the ref with: `git ls-remote --branches|--tags <pattern>`
   //   Therefore, better use a suffix instead of a prefix for glob-less (for performance) patterns
@@ -34,7 +34,7 @@ function getRefs ( uuid ) {
     type: `refs/heads/kv/values/${uuid}/type`,
     expiry: `refs/heads/kv/expiries/${uuid}/dayID`,
     key: `refs/tags/kv/keys/${uuid}/key`
-  }
+  };
 }
 
 // Brief: Inverse of getRefs(uuid)
@@ -140,7 +140,7 @@ export default class Database {
       default:
         pushKey = true;
     }
-    
+
     let expiry, expiryId;
     if (Number.isFinite(ttl)) {
       expiry = x.getExpiry(ttl);
@@ -160,7 +160,7 @@ export default class Database {
       // Not encrypting expiryId allows it to be read as text using GraphQL in read()
       this.commitTyped(oldValue, { push: false })
     ]);
-    
+
     // Prep for deletion if val === undefined
     if (val === undefined) {
       keyCommitHash = null;
@@ -294,7 +294,7 @@ export default class Database {
         bytes: expiryBytes,
         type: 'Number'
       });
-    };
+    }
     if (x.isStale(expiryId)) return {}; // Return undefined value for expired data
 
     return {
@@ -312,7 +312,7 @@ export default class Database {
   // Params: modifier <function>, async or not
   // Returns: { oldValue, currentValue, cdnLinks } <object>
   // Note: keepTtl takes precedence over ttl, if both truthy
-  async update (key, modifier, { keepTtl=false, ttl } = {}) {
+  async update (key, modifier, { keepTtl = false, ttl } = {}) {
     const { value: oldValue, expiry: oldExpiry } = await this.read(key);
 
     let newValue;
@@ -360,13 +360,13 @@ export default class Database {
   }
 
   async expire (key, ttl) {
-    const expiryId = x.dateToId( x.getExpiry(ttl) );
+    const expiryId = x.dateToId(x.getExpiry(ttl));
 
-    const [ { uuid, commitHash: keyCommitHash }, { commitHash: expiryCommitHash } ] = await Promise.all([
+    const [{ uuid, commitHash: keyCommitHash }, { commitHash: expiryCommitHash }] = await Promise.all([
       this.keyToUuid(key),
       this.commitTyped(expiryId, { push: true, encrypt: false })
     ]);
-    
+
     const refs = getRefs(uuid);
     try {
       await this.repository.updateRefs([
@@ -391,7 +391,7 @@ export default class Database {
     }
     return this.repository.updateRefs(refUpdates);
   }
-  
+
   // Brief: Garbage Collection
   // Param: now <Date>, optional. If passed, consider the given time as now.
   // Param: Options.batchSize <integer>, max no. of UUIDs to be deleted atomically in a single batch.
@@ -402,10 +402,10 @@ export default class Database {
       push: false
     });
 
-    if (! await this.repository.hasCommit(expiryCommitHash)) return 0;
-    
+    if (!await this.repository.hasCommit(expiryCommitHash)) return 0;
+
     const expiryRefs = await this.repository.listBranchesTo(expiryCommitHash);
-    
+
     // Deleting too many refs at once may fail.
     // Hence deleting small batches atomically at once, and multiple batches in parallel.
     const promises = [];
@@ -416,7 +416,7 @@ export default class Database {
             .map((ref) => refToUuid(ref))
         )
       );
-    };
+    }
     await Promise.all(promises);
     return expiryRefs.length;
   }
