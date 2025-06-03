@@ -96,6 +96,7 @@ describe('Testing database', () => {
 
     await kv.gc();
 
+    await setTimeout(2000);
     for (const key of keys) {
       assert.equal(await kv.has(key), false);
     };

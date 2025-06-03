@@ -2,6 +2,7 @@
 
 import Repository from './github.js';
 import assert from 'assert';
+import { setTimeout } from 'node:timers/promises';
 import { config } from 'dotenv';
 
 config(); // Sourcing .env
@@ -52,12 +53,14 @@ describe('Testing github', () => {
     }
     const branch = 'test/target/' + commitHash;
     await repository.updateRefs([{ afterOid: commitHash, name: branch }]);
+    await setTimeout(2000);
     assert.deepStrictEqual(await repository.listBranchesTo(commitHash), [ branch ]);
     assert.ok(await repository.hasRef(branch));
     assert.equal(await repository.refToCommitHash(`refs/heads/` + branch), commitHash);
     assert.equal(await repository.refToCommitHash(branch), commitHash);
     // Delete the branch
     await repository.updateRefs([{ name: branch }]);
+    await setTimeout(2000);
     assert.equal(await repository.refToCommitHash(branch), undefined);
     assert.equal(await repository.hasRef(`refs/heads/` + branch), false);
   }

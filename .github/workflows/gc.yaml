@@ -31,8 +31,10 @@ jobs:
           check-latest: false
           cache: npm
       - name: Install dependencies
+        env:
+          NODE_ENV: production
         run: npm ci # Clean, frozen install. Doesn't modify package.json or package-lock.json
       - name: Garbage collection
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: src/gc.js "${GITHUB_REPOSITORY}"
+        run: npm run gc "${GITHUB_REPOSITORY}"

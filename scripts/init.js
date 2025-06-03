@@ -3,7 +3,7 @@
 // Arg: <owner>/<repo>, to pass github user/repo
 // Env: GH_TOKEN, to pass auth/access token
 
-import Database from './database.js';
+import Database from '../src/index.js';
 
 const [owner, repo] = process.argv[2]?.split('/') ?? [];
 const auth = process.env.GH_TOKEN;

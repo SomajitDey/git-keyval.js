@@ -30,6 +30,8 @@ jobs:
           check-latest: false
           cache: npm
       - name: Install dependencies
+        env:
+          NODE_ENV: production
         run: npm ci # Clean, frozen install. Doesn't modify package.json or package-lock.json
       - name: Clean prior init, if any
         continue-on-error: true
@@ -38,4 +40,4 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: src/init.js "${GITHUB_REPOSITORY}"
+        run: npm run init "${GITHUB_REPOSITORY}"

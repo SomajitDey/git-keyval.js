@@ -1,4 +1,25 @@
 {
+  "name": "git-keyval",
+  "description": "SDK to transform your GitHub repository into a key-value database, JSON-bin or file-store",
+  "repository": "github:SomajitDey/git-keyval.js",
+  "homepage": "https://github.com/SomajitDey/git-keyval.js#-git-keyval",
+  "author": "Somajit Dey (https://github.com/SomajitDey)",
+  "license": "MIT",
+  "funding": "https://buymeacoffee.com/somajitdey",
+  "keywords": [
+    "keyval",
+    "key-value",
+    "database",
+    "db",
+    "kvdb",
+    "github",
+    "git",
+    "sdk",
+    "dictionary",
+    "json-bin",
+    "file-storage",
+    "cdn"
+  ],
   "type": "module",
   "dependencies": {
     "@octokit/graphql": "^8.2.2",
@@ -14,6 +35,17 @@
   },
   "scripts": {
     "test": "mocha --recursive --extension 'test.js' --timeout 120000 --parallel --check-leaks src/",
+    "init": "scripts/init.js",
+    "gc": "scripts/gc.js",
     "lint": "semistandard --fix"
-  }
+  },
+  "version": "0.1.0",
+  "files": [
+    "README.md",
+    "LICENSE",
+    "scripts/",
+    "src/"
+  ],
+  "browser": "src/index.js",
+  "exports": "src/index.js"
 }

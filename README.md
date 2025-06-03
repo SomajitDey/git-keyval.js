@@ -1,7 +1,7 @@
 [![js-semistandard-style](https://cdn.jsdelivr.net/gh/standard/semistandard@v17.0.0/badge.svg)](https://github.com/standard/semistandard)
 
-# 💁 git-keyval.js
-A global Git(Hub)-based Key-Value DataBase to empower you 💪
+# 💁 git-keyval
+A JavaScript (ESM) SDK to transform your GitHub repository into a global Key-Value DataBase, JSON-bin and file-store with powerful features like optional encryption, expiry and CDN 💪.
 
 > ⚠️ This project is currently under heavy development, and therefore, should be treated as incomplete and unstable. **However, I hope to release an alpha-version pretty soon 🤞**. If it piqued your interest, I request you to [watch this repository](https://github.com/SomajitDey/git-keyval.js "Hit the Watch button of this repository, if you're logged in GitHub") and ⭐ it to encourage me.
 
