@@ -37,9 +37,11 @@
     "test": "mocha --recursive --extension 'test.js' --timeout 120000 --parallel --check-leaks src/",
     "init": "scripts/init.js",
     "gc": "scripts/gc.js",
-    "lint": "semistandard --fix"
+    "lint": "semistandard --fix",
+    "bump": "scripts/set-version.sh",
+    "semver": "scripts/get-version.sh"
   },
-  "version": "0.1.0",
+  "version": "1.0.0",
   "files": [
     "README.md",
     "LICENSE",
