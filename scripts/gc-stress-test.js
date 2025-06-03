@@ -3,7 +3,7 @@
 // Arg: <owner>/<repo>, to pass github user/repo
 // Env: GH_TOKEN, to pass auth/access token
 
-import DB from '../src/database.js';
+import DB from '../src/index.js';
 import assert from 'assert';
 import { describe, it } from 'node:test';
 import { setTimeout } from 'node:timers/promises';

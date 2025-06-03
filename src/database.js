@@ -157,7 +157,7 @@ export default class Database {
       this.keyToUuid(key, { push: pushKey }),
       this.commitTyped(val, { push: true }),
       this.commitTyped(expiryId, { push: true, encrypt: false }),
-      // Not encrypting expiryId allows it to be read as text using GraphQL in #read()
+      // Not encrypting expiryId allows it to be read as text using GraphQL in read()
       this.commitTyped(oldValue, { push: false })
     ]);
     
@@ -196,7 +196,7 @@ export default class Database {
   }
 
   // Returns: <object>
-  async #read (key) {
+  async read (key) {
     const { uuid } = await this.keyToUuid(key);
     const refs = getRefs(uuid);
     const bytesRef = refs.bytes;
@@ -307,18 +307,13 @@ export default class Database {
     };
   }
 
-  async read (key) {
-    const { value } = await this.#read(key);
-    return value;
-  }
-
   // Brief: modifier(oldValue) => newValue. Deletes the key if newValue is undefined.
   //   No-op, i.e. doesn't update, if modifier throws error.
   // Params: modifier <function>, async or not
   // Returns: { oldValue, currentValue, cdnLinks } <object>
   // Note: keepTtl takes precedence over ttl, if both truthy
   async update (key, modifier, { keepTtl=false, ttl } = {}) {
-    const { value: oldValue, expiry: oldExpiry } = await this.#read(key);
+    const { value: oldValue, expiry: oldExpiry } = await this.read(key);
 
     let newValue;
     try {
