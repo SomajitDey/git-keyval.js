@@ -4,14 +4,14 @@ echo -e '\nStep: Linting ...'
 npm run lint > /dev/null
 echo -e '... Done\n'
 
-echo -e '\nStep: Running tests ...'
-npm test || \
+echo -e '\nStep: Bundling ...'
+npm run build || \
     {
-        echo 'Test failed. Commit aborted'
+        echo 'Bundling failed. Commit aborted'
         exit 1
     }
 echo -e '... Done\n'
 
-echo -e '\nStep: Staging formatted (linted) files ...'
+echo -e '\nStep: Staging modified files ...'
 git add .
 echo -e '... Done\n'

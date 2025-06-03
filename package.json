@@ -30,10 +30,12 @@
   },
   "devDependencies": {
     "dotenv": "^16.5.0",
+    "esbuild": "^0.25.5",
     "mocha": "^11.1.0",
     "semistandard": "^17.0.0"
   },
   "scripts": {
+    "build": "./node_modules/.bin/esbuild src/index.js --bundle --format=esm --minify --outfile=dist/index.min.js",
     "test": "mocha --recursive --extension 'test.js' --timeout 120000 --parallel --check-leaks src/",
     "init": "scripts/init.js",
     "gc": "scripts/gc.js",
@@ -45,8 +47,9 @@
   "files": [
     "README.md",
     "LICENSE",
-    "src/"
+    "src/",
+    "dist/"
   ],
-  "browser": "src/index.js",
+  "browser": "dist/index.min.js",
   "exports": "src/index.js"
 }
