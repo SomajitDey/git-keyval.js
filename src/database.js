@@ -5,6 +5,23 @@ import * as x from './expiry.js';
 import Ambimap from './utils/ambimap.js';
 import Repository from './utils/github.js';
 import { hexToBase64Url, base64ToHex } from './utils/conversions.js';
+import { LRUCache } from 'lru-cache';
+
+// Global in-memory cache to minimise ratelimited requests to GitHub APIs.
+const cache = {};
+
+// LRU cache to hold [commitHash, bytes] pairs
+cache.bytes = new LRUCache({
+  max: 500, // Maximum this many entries to be retained past which LRU eviction is triggered
+  maxSize: 100000, // in bytes
+  maxEntrySize: 500, // in bytes
+  sizeCalculation: (bytes, commitHash) => bytes.length
+});
+
+// LRU cache to hold [commitHash, msg] pairs
+cache.msg = new LRUCache({
+  max: 10000
+});
 
 const defaultPaths = ['bytes', 'view.txt', 'view.json'];
 const txtView = 'view.txt'; // Safer than `bytes` because it has plain/text extension.
@@ -80,6 +97,57 @@ export default class Database {
     return { commitHash, type, cdnLinks };
   }
 
+  // Brief: Inverse of commitTyped().
+  // Note: Makes extensive use of in-memory LRU-cache to minimize non-CDN fetches.
+  async fetchTyped (commitHash, type, { decrypt, blobHash, commitMsg } = {}) {
+    // undefined in undefined out
+    if (commitHash === undefined) return;
+
+    // Fetching bytes
+    // Evoking async fetch as early as possible, storing the pending promise in a variable
+    let bytesPromise;
+    if (this.repository.isPublic) { // Fast and unlimited fetch from CDN
+      // No point in caching the fetched data increasing footprint
+      // Note: Browsers will already be using http-cache
+      bytesPromise = this.repository.fetchCommitContent(commitHash, { decrypt, path: txtView });
+    } else if (cache.bytes.has(commitHash)) { // Fastest, from local cache
+      bytesPromise = cache.bytes.get(commitHash);
+    } else if (blobHash) { // Economic, single ratelimited request to GitHub
+      // Cache for future use.
+      bytesPromise = this.repository.fetchBlobContent(blobHash, { decrypt })
+        .then((bytes) => {
+          cache.bytes.set(commitHash, bytes);
+          return bytes;
+        });
+    } else { // Expensive, multiple ratelimited requests to GitHub
+      // Cache for future use.
+      bytesPromise = this.repository.fetchCommitContent(commitHash, { decrypt, path: txtView })
+        .then((bytes) => {
+          cache.bytes.set(commitHash, bytes);
+          return bytes;
+        });
+    }
+
+    // Obtain commit message from passed option or local cache. Fetch from GitHub otherwise.
+    commitMsg = commitMsg ?? cache.msg.get(commitHash);
+    if (type === 'Blob' && commitMsg === undefined) {
+      commitMsg = await this.repository.fetchCommitMessage(commitHash)
+        .then((msg) => {
+          cache.msg.set(commitHash, msg);
+          return msg;
+        });
+    }
+
+    // Getting MIME-type
+    const { mimeType } = decodeCommitMsg(commitMsg);
+
+    return types.bytesToTyped({
+      bytes: await bytesPromise,
+      type,
+      mimeType
+    });
+  }
+
   async init () {
     const refUpdates = [];
     for (const type of types.types) {
@@ -117,12 +185,7 @@ export default class Database {
   async uuidToKey (uuid) {
     const [type, base64CommitHash] = uuid.split('/');
     const commitHash = base64ToHex(base64CommitHash);
-    const [bytes, commitMsg] = await Promise.all([
-      this.repository.fetchCommitContent(commitHash, { path: txtView }),
-      type === 'Blob' ? this.repository.fetchCommitMessage(commitHash) : ''
-    ]);
-    const { mimeType } = decodeCommitMsg(commitMsg);
-    return types.bytesToTyped({ type, mimeType, bytes });
+    return this.fetchTyped(commitHash, type);
   }
 
   // Note: For val = undefined, create() with overwrite is equivalent to delete()
@@ -189,10 +252,10 @@ export default class Database {
     }
   }
 
+  // Note: Also returns true for stale keys that haven't been garbage-collected yet. Needed for testing GC.
   async has (key) {
     const { uuid } = await this.keyToUuid(key);
     return this.repository.hasRef(getRefs(uuid).key);
-    // TODO: Also check for stale keys, that haven't been garbage-collected (GC) yet
   }
 
   // Returns: <object>
@@ -270,39 +333,20 @@ export default class Database {
       ]);
     }
 
-    if (valBytesCommitHash === undefined) return {};
+    const valPromise = this.fetchTyped(
+      valBytesCommitHash,
+      commitHashToTypes.get(valTypeCommitHash),
+      {
+        blobHash: valBytesBlobHash,
+        commitMsg: valBytesCommitMessage
+      }
+    );
 
-    const valType = commitHashToTypes.get(valTypeCommitHash);
-    if (valType === 'Blob' && valBytesCommitMessage === undefined) {
-      valBytesCommitMessage = await this.repository.fetchCommitMessage(valBytesCommitHash);
-    }
-    const mimeType = valBytesCommitMessage ? valBytesCommitMessage.split(';')[0] : undefined;
-
-    let valBytesPromise;
-    // Compare fetchCommitContent() in ./github.js
-    if (this.repository.isPublic) {
-      // Use CDN to fetch
-      valBytesPromise = this.repository.fetchCommitContent(valBytesCommitHash, { path: txtView });
-    } else {
-      // Use GitHub REST API to fetch directly from the blob
-      valBytesPromise = this.repository.fetchBlobContent(valBytesBlobHash);
-    }
-
-    if (expiryId === undefined && expiryCommitHash) {
-      const expiryBytes = await this.repository.fetchCommitContent(expiryCommitHash, { decrypt: false, path: txtView });
-      expiryId = types.bytesToTyped({
-        bytes: expiryBytes,
-        type: 'Number'
-      });
-    }
+    expiryId = expiryId ?? await this.repository.fetchTyped(expiryCommitHash, 'Number', { decrypt: false });
     if (x.isStale(expiryId)) return {}; // Return undefined value for expired data
 
     return {
-      value: types.bytesToTyped({
-        bytes: await valBytesPromise,
-        type: valType,
-        mimeType
-      }),
+      value: await valPromise,
       expiry: expiryId ? x.idToDate(expiryId) : undefined
     };
   }

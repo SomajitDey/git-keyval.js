@@ -26,6 +26,7 @@
     "@octokit/request": "^9.2.3",
     "date-and-time": "^3.6.0",
     "js-base64": "^3.7.7",
+    "lru-cache": "^11.1.0",
     "mime-db-lite": "^2.1.0"
   },
   "devDependencies": {
