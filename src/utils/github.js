@@ -343,7 +343,7 @@ export default class Repository {
       );
     }
     // CDN doesn't exist for private repos
-    if (!this.isPublic) return;
+    if (!this.isPublic) return [];
     const user = this.owner;
     const repo = this.name;
     return [
