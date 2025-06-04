@@ -342,7 +342,7 @@ export default class Database {
       }
     );
 
-    expiryId = expiryId ?? await this.repository.fetchTyped(expiryCommitHash, 'Number', { decrypt: false });
+    expiryId = expiryId ?? await this.fetchTyped(expiryCommitHash, 'Number', { decrypt: false });
     if (x.isStale(expiryId)) return {}; // Return undefined value for expired data
 
     return {

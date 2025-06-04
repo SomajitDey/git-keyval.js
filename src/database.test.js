@@ -62,7 +62,7 @@ describe('Testing database', () => {
     const blob = new Blob(['hello', 'world'], { type: 'custom/mime' });
     await kv.create(key, blob, { overwrite: true });
     await setTimeout(2000);
-    assert.deepStrictEqual(await kv.read(key).then(({ value }) => value), blob);
+    assert.deepStrictEqual(await kvUnauthenticated.read(key).then(({ value }) => value), blob);
 
     const typedArray = new Uint8Array([12, 23, 3434]);
     await kv.create(key, typedArray, { overwrite: true });

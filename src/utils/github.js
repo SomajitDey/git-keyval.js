@@ -325,7 +325,7 @@ export default class Repository {
   // Params: commitHash <string>
   // Returns: <String> | undefined, if commit doesn't exist
   async fetchCommitMessage (commitHash) {
-    return this.request('HEAD /repos/{owner}/{repo}/git/commits/{ref}', {
+    return this.request('GET /repos/{owner}/{repo}/git/commits/{ref}', {
       ref: commitHash
     })
       .then((response) => response.data.message)
