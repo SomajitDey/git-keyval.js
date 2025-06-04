@@ -18,6 +18,7 @@ export default class Repository {
   authenticated;
   request;
   graphql;
+  ratelimit = {};
   id;
   isPublic;
   created;
@@ -42,7 +43,7 @@ export default class Repository {
 
   // Param: options <object>
   // options.fetch: <function>, custom fetch method
-  constructor ({ owner, repo, auth, encrypt, decrypt, committer, author, fetch }) {
+  constructor ({ owner, repo, auth, encrypt, decrypt, committer, author, fetch = globalThis.fetch } = {}) {
     this.owner = owner;
     this.name = repo;
     this.authenticated = Boolean(auth);
@@ -57,6 +58,7 @@ export default class Repository {
     };
     this.author = author ?? this.committer;
 
+    const ratelimit = this.ratelimit;
     this.request = request.defaults({
       owner,
       repo,
@@ -65,7 +67,26 @@ export default class Repository {
         'X-GitHub-Api-Version': '2022-11-28'
       },
       request: {
-        fetch
+        // Wrapping around provided/default fetch() in order to populate this.ratelimit property from response headers
+        // Also checks for remaining ratelimit tokens before fetching; returns 429 response if no token left.
+        fetch: async (...args) => {
+          if (ratelimit.remaining === 0 && new Date().getTime() / 1000 < ratelimit.reset) {
+            return new Response(
+            `Ratelimited. Try after ${new Date(ratelimit.reset * 1000)}.`,
+            {
+              status: 429,
+              statusText: 'Too Many Requests'
+            }
+            );
+          }
+          const response = await fetch(...args);
+          const headers = response.headers;
+          ratelimit.reset = headers.get('x-ratelimit-reset') ?? undefined;
+          ratelimit.used = headers.get('x-ratelimit-used') ?? undefined;
+          ratelimit.remaining = headers.get('x-ratelimit-remaining') ?? undefined;
+          ratelimit['retry-after'] = headers.get('retry-after') ?? undefined;
+          return response;
+        }
       }
     });
 
