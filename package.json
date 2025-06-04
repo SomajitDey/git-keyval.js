@@ -35,7 +35,7 @@
     "semistandard": "^17.0.0"
   },
   "scripts": {
-    "build": "./node_modules/.bin/esbuild src/index.js --bundle --format=esm --minify --outfile=dist/index.min.js",
+    "build": "./node_modules/.bin/esbuild src/index.js --bundle --format=esm --minify --tree-shaking=true --outfile=dist/index.min.js",
     "test": "mocha --recursive --extension 'test.js' --timeout 120000 --parallel --check-leaks src/",
     "init": "scripts/init.js",
     "gc": "scripts/gc.js",
