@@ -10,8 +10,7 @@ import { config } from 'dotenv';
 config(); // Sourcing .env
 
 const passwd = process.env.PASSWORD;
-const ownerRepo = `${process.env.GH_REPO}`;
-const [owner, repo] = ownerRepo?.split('/') ?? [];
+const ownerRepo = process.env.GH_REPO;
 const salt = textToBytes(ownerRepo);
 const iv = (bytes) => concatBytes([
   textToBytes(passwd),
@@ -20,22 +19,19 @@ const iv = (bytes) => concatBytes([
 ]);
 const codec = await Codec.instantiate(passwd, salt, iv);
 
-const kv = await DB.instantiate({
-  owner,
-  repo,
+const opts = {
   auth: process.env.GH_TOKEN,
   encrypt: async (bytes) => codec.encrypt(bytes),
   decrypt: async (bytes) => codec.decrypt(bytes)
-});
+};
+
+const kv = await DB.instantiate(ownerRepo, opts);
 
 // Can't use unauthenticated for private repositories
 const kvReadOnly = kv.repository.isPublic
-  ? await DB.instantiate({
-    owner,
-    repo,
-    auth: process.env.GH_TOKEN, // Comment out to test unauthenticated reads
-    encrypt: async (bytes) => codec.encrypt(bytes),
-    decrypt: async (bytes) => codec.decrypt(bytes)
+  ? await DB.instantiate(ownerRepo, {
+    ...opts
+    // auth: undefined
   })
   : kv;
 

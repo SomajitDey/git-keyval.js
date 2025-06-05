@@ -1,4 +1,4 @@
-// Export your GitHub access-token as env var: GITHUB_PAT before running this script
+// Note: Using a timeout before reads after an update to allow changes take effect across upstream
 
 import Repository from './github.js';
 import assert from 'assert';
@@ -7,13 +7,12 @@ import { config } from 'dotenv';
 
 config(); // Sourcing .env
 
-const ownerRepo = `${process.env.GH_REPO}`;
-const [owner, repo] = ownerRepo?.split('/') ?? [];
-
-const repository = await Repository.instantiate({
-  owner,
-  repo,
-  auth: process.env.GH_TOKEN
+const repository = await Repository.instantiate(process.env.GH_REPO, {
+  auth: process.env.GH_TOKEN,
+  committer: {
+    name: 'First Last',
+    email: 'user@host.tld'
+  }
 });
 
 describe('Testing github', () => {
@@ -46,14 +45,15 @@ describe('Testing github', () => {
       refToCommitHash, hasCommit, hasRef, listBranchesTo`,
       async () => {
         const bytes = crypto.getRandomValues(new Uint8Array(14));
-        const commitHash = await repository.commitBytes(bytes);
+        const commitMsg = 'Test commit';
+        const commitHash = await repository.commitBytes(bytes, { message: commitMsg });
         assert.ok(await repository.hasCommit(commitHash));
-        assert.equal(await repository.commitBytes(bytes, { push: false }), commitHash);
         assert.deepStrictEqual(await repository.fetchCommitContent(commitHash), bytes);
         const [cdnLink] = repository.cdnLinks(commitHash);
         if (cdnLink) {
           assert.deepStrictEqual(await fetch(cdnLink).then((res) => res.bytes()), bytes);
         }
+        assert.equal(await repository.fetchCommitMessage(commitHash), commitMsg);
         const branch = 'test/target/' + commitHash;
         await repository.updateRefs([{ afterOid: commitHash, name: branch }]);
         await setTimeout(2000);

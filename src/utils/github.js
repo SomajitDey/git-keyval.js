@@ -35,27 +35,24 @@ export default class Repository {
 
   // Await this static method to get a class instance
   // Params: Same as that of constructor() below
-  static async instantiate (obj) {
-    const instance = new Repository(obj);
+  static async instantiate (...args) {
+    const instance = new Repository(...args);
     await instance.#init();
     return instance;
   }
 
   // Param: options <object>
+  // options.committer.date <string>, ISO string for a date/timestamp
   // options.fetch: <function>, custom fetch method
-  constructor ({ owner, repo, auth, encrypt, decrypt, committer, author, fetch = globalThis.fetch } = {}) {
+  constructor (ownerRepo, { auth, encrypt, decrypt, committer, author, fetch = globalThis.fetch } = {}) {
+    const [owner, repo] = ownerRepo.split('/');
     this.owner = owner;
     this.name = repo;
     this.authenticated = Boolean(auth);
     if (encrypt) this.encrypt = encrypt;
     if (decrypt) this.decrypt = decrypt;
     if (encrypt || decrypt) this.encrypted = true;
-    this.committer = committer ?? {
-      // Name and email uses the same letter(s) for better compression
-      name: 'a a',
-      email: 'a@a.a',
-      date: '2025-01-01T00:00:00Z'
-    };
+    this.committer = committer ?? author ?? {};
     this.author = author ?? this.committer;
 
     const ratelimit = this.ratelimit;
@@ -157,12 +154,16 @@ export default class Repository {
     message = '',
     encrypt = this.encrypted,
     paths = ['bytes'],
-    author = this.author,
-    committer = this.committer,
+    author = { ...this.author }, // One way to deep-copy this.author object
+    committer = structuredClone(this.committer), // Another way to deep-copy this.committer object
     parentCommitHashes = [],
     push = true
   } = {}
   ) {
+    if (message && !message.endsWith('\n')) message += '\n'; // Message must end with LF character, if non-empty
+    if (committer.date === undefined) committer.date = new Date().toISOString();
+    if (author.date === undefined) author.date = committer.date;
+
     // First, check if the desired commit already exists using GitHub REST API
     // To that aim, derive the commitHash without actually committing anything!
     const cipher = encrypt ? await this.encrypt(bytes) : bytes;
@@ -206,14 +207,24 @@ export default class Repository {
       tree: treeArray
     });
 
-    // Push commit object to repo
-    return await this.request('POST /repos/{owner}/{repo}/git/commits', {
+    // Push commit object to repo and get the commit hash
+    const upstreamCommitHash = await this.request('POST /repos/{owner}/{repo}/git/commits', {
       message,
       tree: treeHash,
       author,
       committer,
       parents: parentCommitHashes
     }).then((response) => response.data.sha);
+
+    // A fine-example of defensive/diagnostic programming ...
+    // If commit hash upstream doesn't match locally computed commit hash fail loudly / throw exception
+    if (commitHash !== upstreamCommitHash) {
+      throw new Error(
+      `Upstream commit hash ${upstreamCommitHash} doesn't match locally computed ${commitHash}`
+      );
+    }
+
+    return upstreamCommitHash;
   }
 
   // Brief: Equivalent to CLI: git push --atomic --force-with-lease <name>:<beforeOid> origin +<afterOid>:<name>

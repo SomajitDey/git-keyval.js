@@ -112,14 +112,16 @@ function formatPerson ({ name, email, date }) {
 }
 
 // author | committer schema: { name, email, date }
-export async function commitHash ({ treeHash, parentCommitHashes = [], message, author, committer }) {
+export async function commitHash ({ treeHash, parentCommitHashes = [], message = '', author, committer }) {
+  if (message && !message.endsWith('\n')) message += '\n'; // Message must end with LF character, if non-empty
   let commitContent;
   commitContent = parentCommitHashes.reduce((accumulator, parentCommitHash) => {
     return `${accumulator}\nparent ${parentCommitHash}`;
   }, `tree ${treeHash}`);
   commitContent += `\nauthor ${formatPerson(author)}`;
   commitContent += `\ncommitter ${formatPerson(committer)}`;
-  commitContent += `\n\n${message ? message + '\n' : ''}`; // Add linefeed to message, if non-empty
+  commitContent += '\n';
+  commitContent += `\n${message}`;
   return gitHash(textToBytes(commitContent), 'commit');
 }
 

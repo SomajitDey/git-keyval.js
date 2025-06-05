@@ -159,9 +159,17 @@ export default class Database {
   }
 
   // Await this static method to get a class instance
-  // Params: Same as that of Repository.constructor() in ./github.js
-  static async instantiate (obj) {
-    const repository = await Repository.instantiate(obj);
+  // Params: ownerRepo <String>, format: OWNER/REPO
+  // Params: { fetch: <function> }, custom fetch method for hooks etc., optional
+  static async instantiate (ownerRepo, { auth, encrypt, decrypt, fetch } = {}) {
+    // Static committer to enable deduplicated commits
+    const committer = {
+      // Name and email uses the same letter(s) for better compression
+      name: 'a a',
+      email: 'a@a.a',
+      date: '2025-01-01T00:00:00Z'
+    };
+    const repository = await Repository.instantiate(ownerRepo, { committer, auth, encrypt, decrypt, fetch });
     const instance = new Database(repository);
     if (typesToCommitHash.size === 0) {
       for (const type of types.types) {
