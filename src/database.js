@@ -170,7 +170,7 @@ export default class Database {
       date: '2025-01-01T00:00:00Z'
     };
     const repository = await Repository.instantiate(ownerRepo, { committer, auth, encrypt, decrypt, fetch });
-    const instance = new Database(repository);
+    const instance = new this(repository, { callerThis: this });
     if (typesToCommitHash.size === 0) {
       for (const type of types.types) {
         const { commitHash } = await instance.commitTyped(type, { encrypt: false, push: false });
@@ -181,7 +181,14 @@ export default class Database {
   }
 
   // Params: repository <Repository>, instance of the Repository class exported by ./utils/github.js
-  constructor (repository) {
+  constructor (repository, { callerThis } = {}) {
+    if (this.constructor !== callerThis) {
+      const className = this.constructor.name;
+      throw new TypeError(
+        `Instantiate with 'await ${className}.instantiate()' instead of 'new ${className}()'`,
+        { cause: 'async constructor' }
+      );
+    }
     this.repository = repository;
   }
 

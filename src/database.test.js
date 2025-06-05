@@ -37,6 +37,7 @@ const kvReadOnly = kv.repository.isPublic
 
 describe('Testing database', () => {
   it('keyToUuid, uuidToKey, create, read, update, increment, toggle, delete', async () => {
+    assert.throws(() => new DB(), { cause: 'async constructor' });
     const key = { hello: 'world!' };
     const val = { how: 'are you?' };
     const { uuid } = await kv.create(key, val);
