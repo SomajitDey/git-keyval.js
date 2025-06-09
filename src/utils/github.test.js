@@ -16,6 +16,10 @@ const repository = await Repository.instantiate(process.env.GH_REPO, {
 });
 
 describe('Testing github', () => {
+  describe('Has async prototype', () => {
+    assert.throws(() => new Repository(), { cause: 'async constructor' });
+  });
+
   describe('init', () => {
     it('is public', () => {
       assert.equal(repository.isPublic, true);

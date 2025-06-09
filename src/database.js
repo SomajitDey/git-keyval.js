@@ -1,5 +1,6 @@
 // Brief: Key-Value Database hosted as a GitHub Repo
 
+import Async from './utils/async-prototype.js';
 import * as types from './types.js';
 import * as x from './expiry.js';
 import Ambimap from './utils/ambimap.js';
@@ -75,7 +76,7 @@ function decodeCommitMsg (message) {
   return { mimeType, extension };
 }
 
-export default class Database {
+export default class Database extends Async {
   repository;
 
   // Note: Returns expiry instead of ttl, as ttl is meaningful only w.r.t the exact time it is returned.
@@ -161,7 +162,7 @@ export default class Database {
   // Await this static method to get a class instance
   // Params: ownerRepo <String>, format: OWNER/REPO
   // Params: { fetch: <function> }, custom fetch method for hooks etc., optional
-  static async instantiate (ownerRepo, { auth, encrypt, decrypt, fetch } = {}) {
+  static async constructor (ownerRepo, { auth, encrypt, decrypt, fetch } = {}) {
     // Static committer to enable deduplicated commits
     const committer = {
       // Name and email uses the same letter(s) for better compression
@@ -169,27 +170,13 @@ export default class Database {
       email: 'a@a.a',
       date: '2025-01-01T00:00:00Z'
     };
-    const repository = await Repository.instantiate(ownerRepo, { committer, auth, encrypt, decrypt, fetch });
-    const instance = new this(repository, { callerThis: this });
+    this.repository = await Repository.instantiate(ownerRepo, { committer, auth, encrypt, decrypt, fetch });
     if (typesToCommitHash.size === 0) {
       for (const type of types.types) {
-        const { commitHash } = await instance.commitTyped(type, { encrypt: false, push: false });
+        const { commitHash } = await this.commitTyped(type, { encrypt: false, push: false });
         typesToCommitHash.set(type, commitHash);
       }
     }
-    return instance;
-  }
-
-  // Params: repository <Repository>, instance of the Repository class exported by ./utils/github.js
-  constructor (repository, { callerThis } = {}) {
-    if (this.constructor !== callerThis) {
-      const className = this.constructor.name;
-      throw new TypeError(
-        `Instantiate with 'await ${className}.instantiate()' instead of 'new ${className}()'`,
-        { cause: 'async constructor' }
-      );
-    }
-    this.repository = repository;
   }
 
   async keyToUuid (key, { push = false } = {}) {

@@ -4,12 +4,13 @@
 // Note: Using variables instead of template literals in GraphQL to avoid query injection attacks
 // Ref: https://github.com/octokit/graphql.js/issues/2
 
+import Async from './async-prototype.js';
 import { request } from '@octokit/request';
 import { withCustomRequest } from '@octokit/graphql';
 import * as git from './git-hash.js';
 import { bytesToBase64, base64ToBytes } from './conversions.js';
 
-export default class Repository {
+export default class Repository extends Async {
   // Declaring properties to be initialized by constructor() or init()
   committer;
   author;
@@ -33,18 +34,10 @@ export default class Repository {
 
   encrypted = false;
 
-  // Await this static method to get a class instance
-  // Params: Same as that of constructor() below
-  static async instantiate (...args) {
-    const instance = new Repository(...args);
-    await instance.#init();
-    return instance;
-  }
-
   // Param: options <object>
   // options.committer.date <string>, ISO string for a date/timestamp
   // options.fetch: <function>, custom fetch method
-  constructor (ownerRepo, { auth, encrypt, decrypt, committer, author, fetch = globalThis.fetch } = {}) {
+  static async constructor (ownerRepo, { auth, encrypt, decrypt, committer, author, fetch = globalThis.fetch } = {}) {
     const [owner, repo] = ownerRepo.split('/');
     this.owner = owner;
     this.name = repo;
@@ -88,11 +81,9 @@ export default class Repository {
     });
 
     this.graphql = withCustomRequest(this.request);
-  }
 
-  // Brief: Fetch repository info from GitHub API
-  async #init () {
-  // Using REST API instead of GraphQL to support unauthenticated reads
+    // Fetching repository info from GitHub API
+    // Using REST API instead of GraphQL to support unauthenticated reads
     const { node_id, visibility, created_at } = await this.request('GET /repos/{owner}/{repo}')
       .then((response) => response.data);
 
