@@ -159,7 +159,7 @@ export default class Database extends Async {
     await this.repository.updateRefs(refUpdates);
   }
 
-  // Await this static method to get a class instance
+  // Lookup Usage instructions in ./utils/async-prototype.js to understand why constructor is static and more
   // Params: ownerRepo <String>, format: OWNER/REPO
   // Params: { fetch: <function> }, custom fetch method for hooks etc., optional
   static async constructor (ownerRepo, { auth, encrypt, decrypt, fetch } = {}) {

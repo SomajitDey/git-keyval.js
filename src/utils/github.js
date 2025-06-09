@@ -34,6 +34,7 @@ export default class Repository extends Async {
 
   encrypted = false;
 
+  // Lookup Usage instructions in ./async-prototype.js to understand why constructor is static and more
   // Param: options <object>
   // options.committer.date <string>, ISO string for a date/timestamp
   // options.fetch: <function>, custom fetch method
