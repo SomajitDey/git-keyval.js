@@ -4,12 +4,13 @@
 // Note: Using variables instead of template literals in GraphQL to avoid query injection attacks
 // Ref: https://github.com/octokit/graphql.js/issues/2
 
+import Async from './async-prototype.js';
 import { request } from '@octokit/request';
 import { withCustomRequest } from '@octokit/graphql';
 import * as git from './git-hash.js';
 import { bytesToBase64, base64ToBytes } from './conversions.js';
 
-export default class Repository {
+export default class Repository extends Async {
   // Declaring properties to be initialized by constructor() or init()
   committer;
   author;
@@ -18,6 +19,7 @@ export default class Repository {
   authenticated;
   request;
   graphql;
+  ratelimit = {};
   id;
   isPublic;
   created;
@@ -32,31 +34,22 @@ export default class Repository {
 
   encrypted = false;
 
-  // Await this static method to get a class instance
-  // Params: Same as that of constructor() below
-  static async instantiate (obj) {
-    const instance = new Repository(obj);
-    await instance.#init();
-    return instance;
-  }
-
+  // Lookup Usage instructions in ./async-prototype.js to understand why constructor is static and more
   // Param: options <object>
+  // options.committer.date <string>, ISO string for a date/timestamp
   // options.fetch: <function>, custom fetch method
-  constructor ({ owner, repo, auth, encrypt, decrypt, committer, author, fetch }) {
+  static async constructor (ownerRepo, { auth, encrypt, decrypt, committer, author, fetch = globalThis.fetch } = {}) {
+    const [owner, repo] = ownerRepo.split('/');
     this.owner = owner;
     this.name = repo;
     this.authenticated = Boolean(auth);
     if (encrypt) this.encrypt = encrypt;
     if (decrypt) this.decrypt = decrypt;
     if (encrypt || decrypt) this.encrypted = true;
-    this.committer = committer ?? {
-      // Name and email uses the same letter(s) for better compression
-      name: 'a a',
-      email: 'a@a.a',
-      date: '2025-01-01T00:00:00Z'
-    };
+    this.committer = committer ?? author ?? {};
     this.author = author ?? this.committer;
 
+    const ratelimit = this.ratelimit;
     this.request = request.defaults({
       owner,
       repo,
@@ -65,16 +58,33 @@ export default class Repository {
         'X-GitHub-Api-Version': '2022-11-28'
       },
       request: {
-        fetch
+        // Wrapping around provided/default fetch() in order to populate this.ratelimit property from response headers
+        // Also checks for remaining ratelimit tokens before fetching; returns 429 response if no token left.
+        fetch: async (...args) => {
+          if (ratelimit.remaining === 0 && new Date().getTime() / 1000 < ratelimit.reset) {
+            return new Response(
+            `Ratelimited. Try after ${new Date(ratelimit.reset * 1000)}.`,
+            {
+              status: 429,
+              statusText: 'Too Many Requests'
+            }
+            );
+          }
+          const response = await fetch(...args);
+          const headers = response.headers;
+          ratelimit.reset = headers.get('x-ratelimit-reset') ?? undefined;
+          ratelimit.used = headers.get('x-ratelimit-used') ?? undefined;
+          ratelimit.remaining = headers.get('x-ratelimit-remaining') ?? undefined;
+          ratelimit['retry-after'] = headers.get('retry-after') ?? undefined;
+          return response;
+        }
       }
     });
 
     this.graphql = withCustomRequest(this.request);
-  }
 
-  // Brief: Fetch repository info from GitHub API
-  async #init () {
-  // Using REST API instead of GraphQL to support unauthenticated reads
+    // Fetching repository info from GitHub API
+    // Using REST API instead of GraphQL to support unauthenticated reads
     const { node_id, visibility, created_at } = await this.request('GET /repos/{owner}/{repo}')
       .then((response) => response.data);
 
@@ -136,12 +146,16 @@ export default class Repository {
     message = '',
     encrypt = this.encrypted,
     paths = ['bytes'],
-    author = this.author,
-    committer = this.committer,
+    author = { ...this.author }, // One way to deep-copy this.author object
+    committer = structuredClone(this.committer), // Another way to deep-copy this.committer object
     parentCommitHashes = [],
     push = true
   } = {}
   ) {
+    if (message && !message.endsWith('\n')) message += '\n'; // Message must end with LF character, if non-empty
+    if (committer.date === undefined) committer.date = new Date().toISOString();
+    if (author.date === undefined) author.date = committer.date;
+
     // First, check if the desired commit already exists using GitHub REST API
     // To that aim, derive the commitHash without actually committing anything!
     const cipher = encrypt ? await this.encrypt(bytes) : bytes;
@@ -185,14 +199,24 @@ export default class Repository {
       tree: treeArray
     });
 
-    // Push commit object to repo
-    return await this.request('POST /repos/{owner}/{repo}/git/commits', {
+    // Push commit object to repo and get the commit hash
+    const upstreamCommitHash = await this.request('POST /repos/{owner}/{repo}/git/commits', {
       message,
       tree: treeHash,
       author,
       committer,
       parents: parentCommitHashes
     }).then((response) => response.data.sha);
+
+    // A fine-example of defensive/diagnostic programming ...
+    // If commit hash upstream doesn't match locally computed commit hash fail loudly / throw exception
+    if (commitHash !== upstreamCommitHash) {
+      throw new Error(
+      `Upstream commit hash ${upstreamCommitHash} doesn't match locally computed ${commitHash}`
+      );
+    }
+
+    return upstreamCommitHash;
   }
 
   // Brief: Equivalent to CLI: git push --atomic --force-with-lease <name>:<beforeOid> origin +<afterOid>:<name>
@@ -211,17 +235,17 @@ export default class Repository {
       const { name, beforeOid, afterOid, force } = refUpdate;
 
       // If name is not a fully qualified name, format ref as branch
-      if ( !name.startsWith('refs/') ) refUpdate.name = `refs/heads/${name}`;
+      if (!name.startsWith('refs/')) refUpdate.name = `refs/heads/${name}`;
 
       // If beforeOid is null, ref shouldn't be pre-existing
-      if ( beforeOid === null ) refUpdate.beforeOid = defunct;
+      if (beforeOid === null) refUpdate.beforeOid = defunct;
 
       // If afterOid is nullish (undefined | null), format ref for deletion
       refUpdate.afterOid = afterOid ?? defunct;
 
       // Enable force update, if not opted out for
       refUpdate.force = force ?? true;
-    };
+    }
 
     await this.graphql(
   `
@@ -325,7 +349,7 @@ export default class Repository {
   // Params: commitHash <string>
   // Returns: <String> | undefined, if commit doesn't exist
   async fetchCommitMessage (commitHash) {
-    return this.request('HEAD /repos/{owner}/{repo}/git/commits/{ref}', {
+    return this.request('GET /repos/{owner}/{repo}/git/commits/{ref}', {
       ref: commitHash
     })
       .then((response) => response.data.message)
@@ -343,7 +367,7 @@ export default class Repository {
       );
     }
     // CDN doesn't exist for private repos
-    if (!this.isPublic) return;
+    if (!this.isPublic) return [];
     const user = this.owner;
     const repo = this.name;
     return [

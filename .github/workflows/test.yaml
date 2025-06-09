@@ -1,10 +1,6 @@
-name: GC
+name: Test
 
-on:
-  workflow_dispatch: # Enables manual triggering
-  schedule:
-    - cron: '30 * * * *' # Triggered at the 30th min of every hour
-    
+on: [workflow_dispatch, push]
 
 concurrency:
   group: ${{ github.repository }}
@@ -12,7 +8,7 @@ concurrency:
 
 jobs:
 
-  gc:
+  test:
     
     permissions:
       contents: write
@@ -29,10 +25,10 @@ jobs:
           check-latest: false
           cache: npm
       - name: Install dependencies
-        env:
-          NODE_ENV: production
         run: npm ci # Clean, frozen install. Doesn't modify package.json or package-lock.json
-      - name: Garbage collection
+      - name: Run tests
         env:
+          GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run gc "${GITHUB_REPOSITORY}"
+          PASSWORD: passwd
+        run: npm test

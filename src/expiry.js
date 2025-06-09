@@ -33,13 +33,13 @@ export function yesterdayId (now = new Date()) {
 }
 
 export function daysBetween (idBegin, idEnd) {
-  return ( (idEnd - idBegin) + lifetimeDays ) % lifetimeDays;
-};
+  return ((idEnd - idBegin) + lifetimeDays) % lifetimeDays;
+}
 
 export function idToDate (id) {
-  if (isNaN(id) || id < 0 || id >  lifetimeDays - 1) {
+  if (isNaN(id) || id < 0 || id > lifetimeDays - 1) {
     throw new Error(`Index must be within [0, ${lifetimeDays - 1}]`);
-  };
+  }
 
   const today = getToday();
   const idToday = dateToId(today);

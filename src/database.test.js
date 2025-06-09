@@ -10,7 +10,7 @@ import { config } from 'dotenv';
 config(); // Sourcing .env
 
 const passwd = process.env.PASSWORD;
-const ownerRepo = `${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}`;
+const ownerRepo = process.env.GH_REPO;
 const salt = textToBytes(ownerRepo);
 const iv = (bytes) => concatBytes([
   textToBytes(passwd),
@@ -19,30 +19,31 @@ const iv = (bytes) => concatBytes([
 ]);
 const codec = await Codec.instantiate(passwd, salt, iv);
 
-const kv = await DB.instantiate({
-  owner: process.env.GITHUB_OWNER,
-  repo: process.env.GITHUB_REPO,
-  auth: process.env.GITHUB_AUTH,
+const opts = {
+  auth: process.env.GH_TOKEN,
   encrypt: async (bytes) => codec.encrypt(bytes),
   decrypt: async (bytes) => codec.decrypt(bytes)
-});
+};
+
+const kv = await DB.instantiate(ownerRepo, opts);
 
 // Can't use unauthenticated for private repositories
-const kvUnauthenticated = kv.repository.isPublic ? await DB.instantiate({
-  owner: process.env.GITHUB_OWNER,
-  repo: process.env.GITHUB_REPO,
-  encrypt: async (bytes) => codec.encrypt(bytes),
-  decrypt: async (bytes) => codec.decrypt(bytes)
-}) : kv;
+const kvReadOnly = kv.repository.isPublic
+  ? await DB.instantiate(ownerRepo, {
+    ...opts
+    // auth: undefined
+  })
+  : kv;
 
 describe('Testing database', () => {
   it('keyToUuid, uuidToKey, create, read, update, increment, toggle, delete', async () => {
+    assert.throws(() => new DB(), { cause: 'async constructor' });
     const key = { hello: 'world!' };
     const val = { how: 'are you?' };
     const { uuid } = await kv.create(key, val);
     await setTimeout(2000);
-    assert.deepStrictEqual(await kvUnauthenticated.uuidToKey(uuid), key);
-    assert.deepStrictEqual(await kv.read(key), val);
+    assert.deepStrictEqual(await kvReadOnly.uuidToKey(uuid), key);
+    assert.deepStrictEqual(await kvReadOnly.read(key).then(({ value }) => value), val);
     await assert.rejects(kv.create(key, val, { overwrite: false }), { message: 'Key exists' });
     const modifier = (obj) => {
       obj.how = 'are you now?';
@@ -52,46 +53,46 @@ describe('Testing database', () => {
     const modifiedVal = modifier(val);
     await kv.update(key, modifier);
     await setTimeout(2000);
-    assert.deepStrictEqual(await kv.read(key), modifiedVal);
+    assert.deepStrictEqual(await kvReadOnly.read(key).then(({ value }) => value), modifiedVal);
     await assert.rejects(kv.increment(key, -4), new Error('modifier() threw error. See "cause" for details.', { cause: new Error('Old value must be a Number') }));
     await assert.rejects(kv.toggle(key), new Error('modifier() threw error. See "cause" for details.', { cause: new Error('Old value must be a Boolean') }));
 
     const blob = new Blob(['hello', 'world'], { type: 'custom/mime' });
     await kv.create(key, blob, { overwrite: true });
     await setTimeout(2000);
-    assert.deepStrictEqual(await kv.read(key), blob);
+    assert.deepStrictEqual(await kvReadOnly.read(key).then(({ value }) => value), blob);
 
     const typedArray = new Uint8Array([12, 23, 3434]);
     await kv.create(key, typedArray, { overwrite: true });
     await setTimeout(2000);
-    assert.deepStrictEqual(await kv.read(key), typedArray);
+    assert.deepStrictEqual(await kvReadOnly.read(key).then(({ value }) => value), typedArray);
 
     await kv.create(key, 3, { overwrite: true });
     await setTimeout(2000);
     await kv.increment(key, -4);
     await setTimeout(2000);
-    assert.deepStrictEqual(await kv.read(key), -1);
+    assert.deepStrictEqual(await kvReadOnly.read(key).then(({ value }) => value), -1);
 
     await kv.create(key, false, { overwrite: true });
     await setTimeout(2000);
     await kv.toggle(key);
     await setTimeout(2000);
-    assert.deepStrictEqual(await kv.read(key), true);
+    assert.deepStrictEqual(await kvReadOnly.read(key).then(({ value }) => value), true);
 
     await kv.delete(key);
     await setTimeout(2000);
     assert.deepStrictEqual(await kv.has(key), false);
-    assert.deepStrictEqual(await kv.read(key), undefined);
+    assert.deepStrictEqual(await kvReadOnly.read(key).then(({ value }) => value), undefined);
     await assert.rejects(kv.create(key, val, { overwrite: true }), { message: 'Nothing to overwrite' });
   });
-  
+
   it('gc()', async () => {
-    const keys = [1,2,3,4,5];
+    const keys = [1, 2, 3, 4, 5];
     const val = 2;
     const promises = [];
     for (const key of keys) {
       promises.push(kv.create(key, val, { ttl: -1 }));
-    };
+    }
     await Promise.all(promises);
 
     await kv.gc();
@@ -99,6 +100,6 @@ describe('Testing database', () => {
     await setTimeout(2000);
     for (const key of keys) {
       assert.equal(await kv.has(key), false);
-    };
+    }
   });
 });

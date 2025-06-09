@@ -26,26 +26,31 @@
     "@octokit/request": "^9.2.3",
     "date-and-time": "^3.6.0",
     "js-base64": "^3.7.7",
+    "lru-cache": "^11.1.0",
     "mime-db-lite": "^2.1.0"
   },
   "devDependencies": {
     "dotenv": "^16.5.0",
+    "esbuild": "^0.25.5",
     "mocha": "^11.1.0",
     "semistandard": "^17.0.0"
   },
   "scripts": {
+    "build": "./node_modules/.bin/esbuild src/index.js --bundle --format=esm --minify --tree-shaking=true --outfile=dist/index.min.js",
     "test": "mocha --recursive --extension 'test.js' --timeout 120000 --parallel --check-leaks src/",
     "init": "scripts/init.js",
     "gc": "scripts/gc.js",
-    "lint": "semistandard --fix"
+    "lint": "semistandard --fix",
+    "bump": "scripts/set-version.sh",
+    "semver": "scripts/get-version.sh"
   },
-  "version": "0.1.0",
+  "version": "1.0.0",
   "files": [
     "README.md",
     "LICENSE",
-    "scripts/",
-    "src/"
+    "src/",
+    "dist/"
   ],
-  "browser": "src/index.js",
+  "browser": "dist/index.min.js",
   "exports": "src/index.js"
 }
