@@ -9,16 +9,15 @@ import assert from 'assert';
 import { describe, it } from 'node:test';
 import { setTimeout } from 'node:timers/promises';
 
-const repoSpec = process.argv[2] ?? process.env.GH_REPO;
-const [owner, repo] = repoSpec?.split('/') ?? [];
+const ownerRepo = process.argv[2] ?? process.env.GH_REPO;
 const auth = process.env.GH_TOKEN;
-if (Boolean(owner && repo && auth) === false) {
+if (Boolean(ownerRepo && auth) === false) {
   throw new Error('Pass <owner>/<repo> as arg and GH_TOKEN as env variable');
 }
 
 const numKeys = 200; // Too big triggers GitHub's (secondary) rate-limits
 
-const kv = await DB.instantiate({ owner, repo, auth });
+const kv = await DB.instantiate(ownerRepo, { auth });
 
 const val = 2; // Any random value; setting same value for all keys for efficiency
 

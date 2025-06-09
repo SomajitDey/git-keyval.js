@@ -6,13 +6,12 @@
 
 import Database from '../src/index.js';
 
-const repoSpec = process.argv[2] ?? process.env.GH_REPO;
-const [owner, repo] = repoSpec?.split('/') ?? [];
+const ownerRepo = process.argv[2] ?? process.env.GH_REPO;
 const auth = process.env.GH_TOKEN;
-if (Boolean(owner && repo && auth) === false) {
+if (Boolean(ownerRepo && auth) === false) {
   throw new Error('Pass <owner>/<repo> as arg and GH_TOKEN as env variable');
 }
 
-const db = await Database.instantiate({ owner, repo, auth });
+const db = await Database.instantiate(ownerRepo, { auth });
 const numKeysRemoved = await db.gc();
-console.log(`GC: Removed ${numKeysRemoved} stale keys at https://github.com/${owner}/${repo}`);
+console.log(`GC: Removed ${numKeysRemoved} stale keys at https://github.com/${ownerRepo}`);
