@@ -10,7 +10,7 @@ A lightweight, portable, modern JavaScript (ESM) SDK to transform your GitHub re
 
 🚀 Keys and values can be any of multiple JavaScript types -- `String`, `Number`, `Boolean`, `null`, `Object`, `Array`, `Uint8Array`, `ArrayBuffer`, `Blob`. Future versions may support more datatypes.
 
-🚀 Optional encryption with user-provided password on top of separate access-control managed by GitHub 🔐
+🚀 Optional encryption with user-defined `encrypt` and `decrypt` methods on top of separate access-control managed by GitHub 🔐
 
 🚀 For public repositories, data is cached and served by multiple CDNs enabling lightning-fast reads across the globe, even at places where GitHub is not accessible ⚡
 
@@ -27,6 +27,8 @@ A lightweight, portable, modern JavaScript (ESM) SDK to transform your GitHub re
 🚀 Can be implemented with standard Git commands only; does not depend heavily on anything exclusive to GitHub.
 
 🚀 Loosely coupled to GitHub's API (REST and GraphQL). Can be used with other Git-servers, like GitLab, Bit-bucket or self-hosted, by replacing a single module in this codebase.
+
+🚀 SDK supports specifying a custom `fetch` method. Using this, custom hooks may be implemented 💡
 
 > ⚠️ This project is currently under heavy development, and therefore, should be treated as incomplete and unstable. **However, I hope to release an alpha-version pretty soon 🤞**. If it piqued your interest, I request you to [watch this repository](https://github.com/SomajitDey/git-keyval.js "Hit the Watch button of this repository, if you're logged in GitHub") and ⭐ it to encourage me.
 
