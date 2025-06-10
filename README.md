@@ -68,7 +68,7 @@ import DB from 'git-keyval';
 
 If you need help using this project, do not hesitate to [ask](https://github.com/SomajitDey/git-keyval.js/discussions/categories/q-a).
 
-If you are building something using the project, you're welcome to advertise it [here](https://github.com/SomajitDey/git-keyval.js/discussions/categories/show-and-tell).
+If you built something using or inspired from this project, you're welcome to advertise it [here](https://github.com/SomajitDey/git-keyval.js/discussions/categories/show-and-tell).
 
 If you like this project, you can show your appreciation by
 - [giving it a star](https://github.com/SomajitDey/git-keyval.js/stargazers) ⭐
