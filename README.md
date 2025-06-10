@@ -1,44 +1,78 @@
-[![js-semistandard-style](https://cdn.jsdelivr.net/gh/standard/semistandard@v17.0.0/badge.svg)](https://github.com/standard/semistandard)
+![JavaScript](https://img.shields.io/badge/ECMAScriptModule-black?logo=javascript&logoColor=F7DF1E)
+[![js-semistandard-style](https://img.shields.io/badge/code%20style-semistandard-brightgreen.svg)](https://github.com/standard/semistandard)
 
 # 💁 git-keyval
-A JavaScript (ESM) SDK to transform your GitHub repository into a global Key-Value DataBase, JSON-bin and file-store with powerful features like optional encryption, expiry and CDN 💪.
+A lightweight, portable, modern JavaScript (ESM) SDK to transform your GitHub repository into a global Key-Value DataBase (CRUD), JSON bin and files store with powerful features like optional encryption, expiry and CDN 💪
+
+🚀 Uses your GitHub repository as a global key-value database, supporting multi-region CRUD (`create`-`read`-`update`-`delete`) operations 🌐
+
+🚀 All writes are atomic! Allows concurrent writes alongwith overwrite protection.
+
+🚀 Keys and values can be any of multiple JavaScript types -- `String`, `Number`, `Boolean`, `null`, `Object`, `Array`, `Uint8Array`, `ArrayBuffer`, `Blob`. Future versions may support more datatypes.
+
+🚀 Optional encryption with user-provided password on top of separate access-control managed by GitHub 🔐
+
+🚀 For public repositories, data is cached and served by multiple CDNs enabling lightning-fast reads across the globe, even at places where GitHub is not accessible ⚡
+
+🚀 Database may be repurposed as JSON bin or files store, by storing JSON and file blobs against string-typed keys, respectively. For unencrypted, public repositories, the `create` and `update` operations provide CDN links to download the stored JSON or file with the proper `Content-Type` header 📁
+
+🚀 Allows setting custom expiry for your keys. TTL is counted in days 
+
+🚀 Uses in-memory LRU cache for performance, also minimizing rate-limited requests to GitHub APIs.
+
+🚀 Designed not to abuse GitHub or the public CDNs. Data is reused as much as possible with deleted data available for `git gc` at GitHub's end ♻️
+
+🚀 Uses GitHub Actions/CI for automated tasks such as periodic removal of expired/stale keys.
+
+🚀 Can be implemented with standard Git commands only; does not depend heavily on anything exclusive to GitHub.
+
+🚀 Loosely coupled to GitHub's API (REST and GraphQL). Can be used with other Git-servers, like GitLab, Bit-bucket or self-hosted, by replacing a single module in this codebase.
 
 > ⚠️ This project is currently under heavy development, and therefore, should be treated as incomplete and unstable. **However, I hope to release an alpha-version pretty soon 🤞**. If it piqued your interest, I request you to [watch this repository](https://github.com/SomajitDey/git-keyval.js "Hit the Watch button of this repository, if you're logged in GitHub") and ⭐ it to encourage me.
 
-# Design goals(and constraints)-cum-Features
+## Setup GitHub repository
+Simply create a GitHub repository from the template available at https://github.com/SomajitDey/git-keyval.js. The newly created repository should be setup automatically. You may check on the setup progress at the `Actions` tab in the homepage of your repository.
 
-### Database
-- Global key-value database 🌐, with multi-region reads served and cached by CDN (hence global).
-- A GitHub DB-repo upstream as the single source of truth
-- Reads are also served by GitHub GraphQL API - fast and efficient compared to the REST API
-- Data is read from multiple sources (viz. CDNs, GraphQL, raw.githubusercontents.com) concurrently, and the freshest is shown to the user. This ensures speed and availability as well as CDN-cache priming. Even if GitHub experiences a downtime, CDNs can serve previously seen records from cache.
-- Writes are served by periodic, long-running Workflows that subscribe to a Redis PubSub topic (using Upstash Redis DB) or expose a webhook. User data is published to that topic or webhook when any CUD (from CRUD) method is called. The Workflow retries pushing to the remote periodically, in case GitHub is down temporarily
-- Write concurrency
-- Anything can be a key or value, as long as it is serializable with `JSON.stringify()`. Keys generate unique Base64 indices (UUIDs), based on which they can be lexicographically sorted. Records may be accessed by the key or its UUID. Last-mile CDNs may be picked based on the UUID as a 1-to-1 map, for better caching guarantees
-- Scanning for all entries, i.e. key-val pairs, should be available and should be fast. To implement this, any given key generates a commit with constant commit-metadata for all keys. The UUID is the base64-URL of the commit-SHA. 
-- Key expiry and automated removal of stale keys. Minimum TTL => 1 day. Garbage collection runs daily. Option to persist records. Expire day index (i.e. `floor(UnixTime/86400)`) is stored as a tag, named in the format `UUID-EXPIRE_DAY_INDEX`, pointing to the commit for that key (the one with SHA = hex(UUID)). Expiry for any given key may then be queried in two ways: listing pattern matching refs (UUID-*) or listing refs containing commit with SHA = hex(UUID).
-- Having too many (unexpired) keys, means having too many branches. [This should not be an issue nowadays](https://stackoverflow.com/questions/28849302/impact-of-large-number-of-branches-in-a-git-repo). However, may not do git-fetch if not absolutely necessary. Even expiry works by calling `git ls-remote *--EXPIRE_DAY_INDEX`, so that only refs expiring that day are downloaded.
-- Aggressive compression and deduplication, not to blow up the DB-repo with a huge object store and big packfiles, at the cost of version control and authentic commit metadata.
-- Automated repo maintenance (through rename-(template)forking-delete cycles) not to abuse GitHub. Because, as users, we can't trigger a garbage-collection at the GitHub remote
-- Cloudflare workers as CDN
-  - Respects request cache-control headers such as no-cache (i.e. serve fresh) and max-age (i.e. serve data with age <= this)
-  - Takes github read access tokens via authorization header. This keeps abusers at bay, if false tokens provided, request-ip gets blacklisted
-  - Caches two things, branch => commit for n-minutes, commit => data or other CDN link to redirect, for eternity
-- Respect Git semantics: tags are static, branches are dynamic. So branches should point to dynamic data, not tags, even though tags are attractive in that they can point to blobs holding data. Branch named `UUID`, corresponding to a key, points to the commit holding value for that key in root-blob at `./value.txt`.
-- Different write strategies to accomodate the tradeoff between number of rate-limited REST-API calls and latencies, as well as different permissions:
-  - Write directly; least latency; permission required: Contents (write)
-  - Write using workflow; slightly greater latency; permission required: Actions
-  - Write in batches using GitHub workflows; high latency but can handle too many writes in a very short span; permission required: Actions
-- Optional password protection, through encryption
+## JS SDK usage
+Use the JavaScript SDK to access and interact with your newly setup GitHub repository.
 
-### NPM Package
-- Runtime independence (atleast Node and V8), and a CDN-served single-script for Browsers
-- Not to abuse public CDNs such as jsdelivr, raw.githacks and statically.io
-- Caching priorities, lowest-rank to be used first:
-  1. sessionStorage (Browser) or Map object (Node or V8, if not serverless)
-  2. Self-deployed CDN
-  3. Package author CDN
-  4. raw.githubusercontents.com
-  5. cdn.jsdelivr | raw.githacks.com | statically.io
-  6. GitHub REST API
+### Install and import
+For browsers:
+```html
+<script type="module">
+    import DB from 'https://unpkg.com/git-keyval@latest/dist/index.min.js';
+    // Replace 'latest' above with the desired version, if not using the latest version
+    
+    // Your code here ...
+</script>
+```
 
+For Node.js:
+
+Install as
+```bash
+npm install git-keyval
+```
+
+Import as
+```javascript
+import DB from 'git-keyval';
+```
+
+### API
+
+# Contribute
+[Bug-reports, feature-requests](https://github.com/SomajitDey/git-keyval.js/issues), [comments, suggestions, feedbacks](https://github.com/SomajitDey/git-keyval.js/discussions) and [pull-requests](https://github.com/SomajitDey/git-keyval.js/pulls) are very much welcome. Let's build a community around this project 👐
+
+If you need help using this project, do not hesitate to [ask](https://github.com/SomajitDey/git-keyval.js/discussions/categories/q-a).
+
+If you are building something using the project, you're welcome to advertise it [here](https://github.com/SomajitDey/git-keyval.js/discussions/categories/show-and-tell).
+
+If you like this project, you can show your appreciation by
+- [giving it a star](https://github.com/SomajitDey/git-keyval.js/stargazers) ⭐
+- sharing it with your peers or writing about it in your blog or developer forums 
+- sponsoring me through 👇
+
+[![Sponsor](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://buymeacoffee.com/SomajitDey)
+
+Thank you 💚
