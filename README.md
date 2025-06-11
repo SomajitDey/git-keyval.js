@@ -66,18 +66,83 @@ To create an instance of the [imported](#install-and-import) class,
 ```javascript
 const kv = await DB.instantiate(ownerRepo, options);
 ```
-#### `ownerRepo`
+
+**`ownerRepo`**
+
 Repository identifier in the format `<owner>/<repo>`.
 - Type: String
 - Example: `'somajitdey/git-keyval.js'`
 - Required: Yes
 
-#### `options`
+**`options`**
+
 Plain old JavaScript object containing optional values.
 - Type: Object
-- Example: `{ auth: 'token' }`
+- Example: `{ auth: 'token', readOnly: true }`
 - Required: No
 
+**`options.readOnly`**
+
+Disables all write operations when set to `true`.
+- Type: Boolean
+- Required: No
+- Default: `false`
+
+**`options.auth`**
+
+GitHub access token for authenticated read/write. For read-only operations, no write permission is needed for the token.
+- Type: String
+- Example: `'github_pat_XXXXXXXXXX'`
+- Required: No
+
+**`options.fetch`**
+
+Custom fetch method. Useful when hooks are needed.
+- Type: Async Function
+- Example:
+    ```javascript
+    async (...args) => {
+        const request = new Request(...args);
+        const modifiedRequest = await preHook(request.headers);
+        const response = await fetch(modifiedRequest);
+        await postHook(response.headers); // For side-effects
+        return response;
+    }
+    ```
+- Required: No
+
+**`options.crypto`**
+
+Define a password or encrypt/decrypt methods.
+- Type: String | Object
+- Example: `password`
+- Required: No
+
+**`options.crypto.encrypt`**
+
+Method to transform plain bytes `<Uint8Array>` input to cipher bytes `<Uint8Array>`.
+- Type: Async Function
+- Example:
+    ```javascript
+    async (plain) => {
+        // encryption plain => cipher ...
+        return cipher;
+    }
+    ```
+- Required: No
+
+**`options.crypto.decrypt`**
+
+Method to transform cipher bytes `<Uint8Array>` input to plain bytes `<Uint8Array>`.
+- Type: Async Function
+- Example:
+    ```javascript
+    async (cipher) => {
+        // decryption cipher => plain...
+        return plain;
+    }
+    ```
+- Required: No
 
 # Contribute
 [Bug-reports, feature-requests](https://github.com/SomajitDey/git-keyval.js/issues), [comments, suggestions, feedbacks](https://github.com/SomajitDey/git-keyval.js/discussions) and [pull-requests](https://github.com/SomajitDey/git-keyval.js/pulls) are very much welcome. Let's build a community around this project 👐
