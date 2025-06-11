@@ -36,7 +36,7 @@ A lightweight, portable, modern JavaScript (ESM) SDK to transform your GitHub re
 Simply create a GitHub repository from the template available at https://github.com/SomajitDey/git-keyval.js. The newly created repository should be setup automatically. You may check on the setup progress at the `Actions` tab in the homepage of your repository.
 
 ## JS SDK usage
-Use the JavaScript SDK to access and interact with your newly setup GitHub repository.
+Use the JavaScript SDK to access and interact with your newly [setup GitHub repository](#setup-github-repository).
 
 ### Install and import
 For browsers:
@@ -61,7 +61,23 @@ Import as
 import DB from 'git-keyval';
 ```
 
-### API
+### Instantiate
+To create an instance of the [imported](#install-and-import) class,
+```javascript
+const kv = await DB.instantiate(ownerRepo, options);
+```
+#### `ownerRepo`
+Repository identifier in the format `<owner>/<repo>`.
+- Type: String
+- Example: `'somajitdey/git-keyval.js'`
+- Required: Yes
+
+#### `options`
+Plain old JavaScript object containing optional values.
+- Type: Object
+- Example: `{ auth: 'token' }`
+- Required: No
+
 
 # Contribute
 [Bug-reports, feature-requests](https://github.com/SomajitDey/git-keyval.js/issues), [comments, suggestions, feedbacks](https://github.com/SomajitDey/git-keyval.js/discussions) and [pull-requests](https://github.com/SomajitDey/git-keyval.js/pulls) are very much welcome. Let's build a community around this project 👐
