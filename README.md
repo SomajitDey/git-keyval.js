@@ -67,6 +67,10 @@ To create an instance of the [imported](#install-and-import) class,
 const kv = await DB.instantiate(ownerRepo, options);
 ```
 
+<details>
+<summary> Parameters ... </summary>
+
+
 **`ownerRepo`**
 
 Repository identifier in the format `<owner>/<repo>`.
@@ -143,6 +147,7 @@ Method to transform cipher bytes `<Uint8Array>` input to plain bytes `<Uint8Arra
     }
     ```
 - Required: No
+</details>
 
 # Contribute
 [Bug-reports, feature-requests](https://github.com/SomajitDey/git-keyval.js/issues), [comments, suggestions, feedbacks](https://github.com/SomajitDey/git-keyval.js/discussions) and [pull-requests](https://github.com/SomajitDey/git-keyval.js/pulls) are very much welcome. Let's build a community around this project 👐
