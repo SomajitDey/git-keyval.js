@@ -201,30 +201,101 @@ Expiry date.
 
 <details>
 <summary><h4><code>kv.has(key)</code></h4></summary>
+
+Returns `<Boolean>`
 </details>
 
 <details>
 <summary><h4><code>kv.read(key)</code></h4></summary>
+
+Returned `<Object>` may have the following properties.
+
+**`value`**
+
+Is `undefined` if key doesn't exist.
+- Type: Any
+- Required: Yes
+
+**`expiry`**
+
+Is `undefined` if key is persistent.
+Expiry date.
+- Type: Date
+- Required: No
 </details>
 
 <details>
 <summary><h4><code>kv.update(key, modifier, options)</code></h4></summary>
+
+#### Parameters
+
+**`modifier`**
+
+Function, synchronous or not, to transform the existing value into the new value.
+- Type: Function, may be async
+- Example:
+    ```javascript
+    (oldValue) => {
+        const newValue = oldValue + 1;
+        return newValue;
+    }
+    ```
+- Required: Yes
+
+**`options`**
+
+Plain old JavaScript object containing optional values.
+- Type: Object
+- Example: `{ keepTtl: true }`
+- Required: No
+
+**`options.ttl`**
+
+TTL in days.
+- Type: Number
+- Required: No
+
+**`options.keepTtl`**
+
+Retains the existing expiry. Overrides `options.ttl`, in case of conflict.
+- Type: Boolean
+- Required: No
 </details>
 
 <details>
 <summary><h4><code>kv.delete(key, value)</code></h4></summary>
+
+`value` is optional. If provided, deletes `key` only if it points to `value`.
+
+Employs `kv.create(key, undefined, { oldValue: value, overwrite: true })` under the hood.
+
+Returns `<Object>` same as `kv.create()`.
 </details>
 
 <details>
 <summary><h4><code>kv.expire(key, ttl)</code></h4></summary>
+
+**`ttl`**
+
+TTL in days.
+- Type: Number
+- Required: Yes
 </details>
 
 <details>
 <summary><h4><code>kv.increment(key, stepSize)</code></h4></summary>
+
+Increments the number stored in `key` by `stepSize <Number>`. Throws error if existing value is not a number.
+
+Employs `kv.update()` under the hood.
 </details>
 
 <details>
 <summary><h4><code>kv.toggle(key)</code></h4></summary>
+
+Toggles the Boolean flag stored in `key`. Throws error if existing value is not a Boolean.
+
+Employs `kv.update()` under the hood.
 </details>
 
 # Contribute
