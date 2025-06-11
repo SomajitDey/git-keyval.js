@@ -155,7 +155,7 @@ The CRUD API is implemented using the following instance methods. There are also
 👉 `key` and `value` in the following can be of any JavaScript type including, `String`, `Number`, `Boolean`, `null`, `Object`, `Array`, `Uint8Array`, `ArrayBuffer`, `Blob`.
 
 <details>
-<summary><code>kv.create(key, value, options)</code></summary>
+<summary><h4><code>kv.create(key, value, options)</code></h4></summary>
 
 #### Parameters
 **`options`**
@@ -200,31 +200,31 @@ Expiry date.
 </details>
 
 <details>
-<summary><code>kv.has(key)</code></summary>
+<summary><h4><code>kv.has(key)</code></h4></summary>
 </details>
 
 <details>
-<summary><code>kv.read(key)</code></summary>
+<summary><h4><code>kv.read(key)</code></h4></summary>
 </details>
 
 <details>
-<summary><code>kv.update(key, modifier, options)</code></summary>
+<summary><h4><code>kv.update(key, modifier, options)</code></h4></summary>
 </details>
 
 <details>
-<summary><code>kv.delete(key, value)</code></summary>
+<summary><h4><code>kv.delete(key, value)</code></h4></summary>
 </details>
 
 <details>
-<summary><code>kv.expire(key, ttl)</code></summary>
+<summary><h4><code>kv.expire(key, ttl)</code></h4></summary>
 </details>
 
 <details>
-<summary><code>kv.increment(key, stepSize)</code></summary>
+<summary><h4><code>kv.increment(key, stepSize)</code></h4></summary>
 </details>
 
 <details>
-<summary><code>kv.toggle(key)</code></summary>
+<summary><h4><code>kv.toggle(key)</code></h4></summary>
 </details>
 
 # Contribute
