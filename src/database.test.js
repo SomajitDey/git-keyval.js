@@ -28,12 +28,11 @@ const opts = {
 const kv = await DB.instantiate(ownerRepo, opts);
 
 // Can't use unauthenticated for private repositories
-const kvReadOnly = kv.repository.isPublic
-  ? await DB.instantiate(ownerRepo, {
-    ...opts
-    // auth: undefined
-  })
-  : kv;
+const kvReadOnly = await DB.instantiate(ownerRepo, {
+  ...opts,
+  readOnly: true
+  // auth: undefined
+});
 
 describe('Testing database', () => {
   it('keyToUuid, uuidToKey, create, read, update, increment, toggle, delete', async () => {

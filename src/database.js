@@ -162,7 +162,7 @@ export default class Database extends Async {
   // Lookup Usage instructions in ./utils/async-prototype.js to understand why constructor is static and more
   // Params: ownerRepo <String>, format: OWNER/REPO
   // Params: { fetch: <function> }, custom fetch method for hooks etc., optional
-  static async constructor (ownerRepo, { auth, encrypt, decrypt, fetch } = {}) {
+  static async constructor (ownerRepo, { auth, encrypt, decrypt, fetch, readOnly = false } = {}) {
     // Static committer to enable deduplicated commits
     const committer = {
       // Name and email uses the same letter(s) for better compression
@@ -176,6 +176,15 @@ export default class Database extends Async {
         const { commitHash } = await this.commitTyped(type, { encrypt: false, push: false });
         typesToCommitHash.set(type, commitHash);
       }
+    }
+
+    if (readOnly) {
+      // Note that disabling only the methods create() and updateRefs() disable all update and delete operations
+      function throwErr () {
+        throw new Error('To write to database, instantiate it with option { readOnly: false }');
+      }
+      this.create = throwErr;
+      this.repository.updateRefs = throwErr;
     }
   }
 
