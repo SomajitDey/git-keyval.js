@@ -149,6 +149,43 @@ Method to transform cipher bytes `<Uint8Array>` input to plain bytes `<Uint8Arra
 - Required: No
 </details>
 
+### API
+The CRUD API is implemented using the following instance methods. There are also a few convenience methods like `increment` and `toggle`. Additionally, an `expire` method is provided.
+
+👉 `key` and `value` in the following can be of any JavaScript type including, `String`, `Number`, `Boolean`, `null`, `Object`, `Array`, `Uint8Array`, `ArrayBuffer`, `Blob`.
+
+<details>
+<summary><code>kv.create(key, value, options)</code></summary>
+</details>
+
+<details>
+<summary><code>kv.has(key)</code></summary>
+</details>
+
+<details>
+<summary><code>kv.read(key)</code></summary>
+</details>
+
+<details>
+<summary><code>kv.update(key, modifier, options)</code></summary>
+</details>
+
+<details>
+<summary><code>kv.delete(key, value)</code></summary>
+</details>
+
+<details>
+<summary><code>kv.expire(key, ttl)</code></summary>
+</details>
+
+<details>
+<summary><code>kv.increment(key, stepSize)</code></summary>
+</details>
+
+<details>
+<summary><code>kv.toggle(key)</code></summary>
+</details>
+
 # Contribute
 [Bug-reports, feature-requests](https://github.com/SomajitDey/git-keyval.js/issues), [comments, suggestions, feedbacks](https://github.com/SomajitDey/git-keyval.js/discussions) and [pull-requests](https://github.com/SomajitDey/git-keyval.js/pulls) are very much welcome. Let's build a community around this project 👐
 
