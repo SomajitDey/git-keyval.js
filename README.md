@@ -156,6 +156,47 @@ The CRUD API is implemented using the following instance methods. There are also
 
 <details>
 <summary><code>kv.create(key, value, options)</code></summary>
+
+#### Parameters
+**`options`**
+
+Plain old JavaScript object containing optional values.
+- Type: Object
+- Example: `{ overwrite: true }`
+- Required: No
+
+**`options.overwrite`**
+
+When `undefined`, overwrites existing data, if any. If set to true, `create` succeeds only if data is being overwritten. If set to false, `create` fails if data would be overwritten.
+- Type: Boolean
+- Required: No
+
+**`options.ttl`**
+
+TTL in days.
+- Type: Number
+- Required: No
+
+**`options.oldValue`**
+
+`create` succeeds only if existing data (being overwritten) equals this.
+- Type: Any
+- Required: No
+
+#### Returns `<Object>`
+Returned object may have the following properties.
+
+**`cdnLinks`**
+
+List of CDN URLs to directly download the `value` stored against `key`.
+- Type: Array
+- Required: No
+
+**`expiry`**
+
+Expiry date.
+- Type: Date
+- Required: No
 </details>
 
 <details>
