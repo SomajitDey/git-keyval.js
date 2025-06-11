@@ -1,6 +1,7 @@
 // Brief: Cryptographic utilities that act on and return bytes <Uint8Array>
 //  Use ./conversions.js and ../types.js to convert other types into bytes
 
+import Async from './async-prototype.js';
 import { concatBytes, textToBytes } from './conversions.js';
 
 // Params: bytes <Uint8Array>
@@ -40,7 +41,7 @@ export async function pbkdf2 (passwd, salt) {
 }
 
 // Brief: Class having symmetric encrypt() and decrypt() methods
-export default class Codec {
+export default class Codec extends Async {
   key;
 
   // Brief: SHA-256 of the returned bytes will be used as AES-GCM's IV while encrypting the given bytes
@@ -49,20 +50,15 @@ export default class Codec {
     return crypto.getRandomValues(new Uint8Array(32));
   }
 
-  constructor (iv) {
-    if (iv) this.iv = iv;
-  }
-
   // Brief: Returns a complete instance of this class
   // Params: passwd <String>, salt <Uint8Array>, iv <function> - see iv() above, may not be async
   // Ref: https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/deriveKey#pbkdf2_derive_aes_key_from_password
-  static async instantiate (passwd, salt, iv = undefined) {
-    const instance = new Codec(iv);
-    instance.key = await pbkdf2(passwd, salt).then((keyBytes) =>
+  // Lookup Usage instructions in ./async-prototype.js to understand why constructor is static and more
+  static async constructor (passwd, salt, iv = undefined) {
+    if (iv) this.iv = iv;
+    this.key = await pbkdf2(passwd, salt).then((keyBytes) =>
       crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', true, ['encrypt', 'decrypt'])
     );
-
-    return instance;
   }
 
   async encrypt (bytes) {

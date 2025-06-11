@@ -5,34 +5,14 @@
 // Ref: https://github.com/octokit/graphql.js/issues/2
 
 import Async from './async-prototype.js';
+import { asyncNoop } from './no-op.js';
 import { request } from '@octokit/request';
 import { withCustomRequest } from '@octokit/graphql';
 import * as git from './git-hash.js';
 import { bytesToBase64, base64ToBytes } from './conversions.js';
 
 export default class Repository extends Async {
-  // Declaring properties to be initialized by constructor() or init()
-  committer;
-  author;
-  owner;
-  name;
-  authenticated;
-  request;
-  graphql;
   ratelimit = {};
-  id;
-  isPublic;
-  created;
-
-  async encrypt (bytes) {
-    return bytes;
-  }
-
-  async decrypt (bytes) {
-    return bytes;
-  }
-
-  encrypted = false;
 
   // Lookup Usage instructions in ./async-prototype.js to understand why constructor is static and more
   // Param: options <object>
@@ -43,11 +23,12 @@ export default class Repository extends Async {
     this.owner = owner;
     this.name = repo;
     this.authenticated = Boolean(auth);
-    if (encrypt) this.encrypt = encrypt;
-    if (decrypt) this.decrypt = decrypt;
-    if (encrypt || decrypt) this.encrypted = true;
     this.committer = committer ?? author ?? {};
     this.author = author ?? this.committer;
+
+    this.encrypted = Boolean(encrypt) || Boolean(decrypt);
+    this.encrypt = encrypt ?? asyncNoop;
+    this.decrypt = decrypt ?? asyncNoop;
 
     const ratelimit = this.ratelimit;
     this.request = request.defaults({

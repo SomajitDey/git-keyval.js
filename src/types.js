@@ -56,7 +56,7 @@ export async function typedToBytes (input) {
     case 'ArrayBuffer':
       return { type, bytes: new Uint8Array(input) };
     default:
-      throw new Error('Unsupported parameter type');
+      throw new TypeError(`Unsupported JavaScript type: ${type}`);
   }
 }
 
@@ -80,6 +80,6 @@ export function bytesToTyped ({ type = 'Uint8Array', mimeType, bytes }) {
     case 'Uint8Array':
       return bytes;
     default:
-      throw new Error('Unsupported type');
+      throw new TypeError(`Unsupported storage type: ${type}`);
   }
 }
