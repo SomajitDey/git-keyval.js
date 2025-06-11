@@ -5,8 +5,10 @@ import * as types from './types.js';
 import * as x from './expiry.js';
 import Ambimap from './utils/ambimap.js';
 import Repository from './utils/github.js';
-import { hexToBase64Url, base64ToHex } from './utils/conversions.js';
+import { textToBytes, hexToBase64Url, base64ToHex } from './utils/conversions.js';
 import { LRUCache } from 'lru-cache';
+import Codec from './utils/crypto.js';
+import { asyncIdentity } from './utils/no-op.js';
 
 // Global in-memory cache to minimise ratelimited requests to GitHub APIs.
 const cache = {};
@@ -162,7 +164,24 @@ export default class Database extends Async {
   // Lookup Usage instructions in ./utils/async-prototype.js to understand why constructor is static and more
   // Params: ownerRepo <String>, format: OWNER/REPO
   // Params: { fetch: <function> }, custom fetch method for hooks etc., optional
-  static async constructor (ownerRepo, { auth, encrypt, decrypt, fetch, readOnly = false } = {}) {
+  // Params: { crypto: password <string> | { encrypt: <function>, decrypt: <function> } }
+  static async constructor (ownerRepo, { auth, crypto: codec, fetch, readOnly = false } = {}) {
+    let encrypt, decrypt;
+    if (codec) {
+      switch (types.getType(codec)) {
+        case 'String':
+          const passwd = codec;
+          codec = await Codec.instantiate(passwd, textToBytes(ownerRepo), asyncIdentity);
+        // Notice fall-through
+        case 'Object':
+          encrypt = async (bytes) => codec.encrypt(bytes);
+          decrypt = async (bytes) => codec.decrypt(bytes);
+          break;
+        default:
+          throw new TypeError('crypto option must be a password string or object containing encrypt, decrypt methods');
+      }
+    }
+
     // Static committer to enable deduplicated commits
     const committer = {
       // Name and email uses the same letter(s) for better compression

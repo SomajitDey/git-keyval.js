@@ -11,18 +11,9 @@ config(); // Sourcing .env
 
 const passwd = process.env.PASSWORD;
 const ownerRepo = process.env.GH_REPO;
-const salt = textToBytes(ownerRepo);
-const iv = (bytes) => concatBytes([
-  textToBytes(passwd),
-  salt,
-  bytes
-]);
-const codec = await Codec.instantiate(passwd, salt, iv);
-
 const opts = {
   auth: process.env.GH_TOKEN,
-  encrypt: async (bytes) => codec.encrypt(bytes),
-  decrypt: async (bytes) => codec.decrypt(bytes)
+  crypto: passwd
 };
 
 const kv = await DB.instantiate(ownerRepo, opts);
