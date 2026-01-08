@@ -1,6 +1,18 @@
 # Example Use Cases for Git-KeyVal
 This document illustrates representative workloads for which the Git-KeyVal protocol is a good fit. These use cases share common characteristics: infrequent atomic writes, high read fan-out, bounded or reusable keys and values, coarse-grained TTLs, and tolerance for eventual consistency across multiple keys.
 
+## Cost-efficient Registry Layer for Modern Serverless Architectures
+Modern serverless and edge-compute platforms (Cloudflare Workers, Vercel Edge Functions, AWS Lambda, Deno Deploy, etc.) are optimized for:
+- stateless execution
+- pay-per-request pricing
+- zero or near-zero idle cost
+
+Git-KeyVal aligns naturally with serverless execution models:
+- Writes are rare and explicit, typically issued from a controlled, possibly serverless, backend or CI-like environment
+- Reads are stateless and cache-friendly,
+requiring no persistent connections or session state
+- Zero idle cost as there is no database process to keep warm. Storage and serving costs are amortized through existing Git hosting and CDN infrastructure.
+
 ## Seat, Slot, and Resource Reservation Systems
 
 Git-KeyVal is well-suited for reservation-style workloads in which resources must be atomically acquired and released with a bounded lifetime.
