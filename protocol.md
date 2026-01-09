@@ -126,22 +126,23 @@ metadata.type => stringified and minified JSON value of the "type" field in the 
 - A Git ref derived from `kid` points to `valOid`
 ```JSON
 {
-    "refs/kv/<kid_shard>/key-<kid_trail>-kv": <valOid>
+    "refs/<namespace>/key-<kid_shard>/<kid_trail>-kv": <valOid>
 }
 ```
+    - default namespace is implementation dependent. User can choose a custom namespace
     - kid and valOid must be encoded as lowercase hexadecimal
-    - kid_shard is derived from the N leading hex characters of kid
-    - Shard-length (N) may be repo-scoped
+    - kid_shard is derived from the first two hexadecimal characters of kid
+    - scalability may be achieved via repository-level sharding, for example, by distributing keys across multiple repositories using a deterministic function of `kid` (e.g. suffix-based partitioning), rather than relying on deep ref hierarchies
 
 For example, for
+- namespace: kv
 - kid: `4a8f050a786cc81c4682a902720db6376d0709c6`
 - valOid: `ea3011a26435f23031e0c81ed34a143aed732575`
-- shard-length: `2`
 
 the corresponding ref is
 ```JSON
 {
-    "refs/kv/4a/key-8f050a786cc81c4682a902720db6376d0709c6-kv": "ea3011a26435f23031e0c81ed34a143aed732575"
+    "refs/kv/key-4a/8f050a786cc81c4682a902720db6376d0709c6-kv": "ea3011a26435f23031e0c81ed34a143aed732575"
 }
 ```
 
@@ -162,13 +163,13 @@ expireAt = epoch + expiryIndex * M + expiryWindow
 - A Git ref derived from `keyOid` points to `expiryWindowOid`
 ```JSON
 {
-    "refs/kv/<kid_shard>/key-<kid_trail>-kx": <expiryWindowOid>
+    "refs/<namespace>/key-<kid_shard>/<kid_trail>-kx": <expiryWindowOid>
 }
 ```
-- A Git ref prefixed with `expiryWindowOid` and otherwise derived from `keyOid` points to `expiryIndexOid`
+- A Git ref prefixed with `expiryWindow` (the integer, not the commit OID) and otherwise derived from `keyOid` points to `expiryIndexOid`. Here, sharding is achieved with `expiryWindow`-based partitioning
 ```JSON
 {
-    "refs/kv/<kid_shard>/exp-<expiryWindowOid>-<kid_trail>": <expiryIndexOid>
+    "refs/<namespace>/exp-<expiryWindow>/<kid>": <expiryIndexOid>
 }
 ```
 - Persistent keys do not have any expiry refs.
@@ -189,11 +190,12 @@ Implementations may perform a lazy, daily scan of refs grouped or prefixed by th
 To support key retrieval (such as during key–value listing), implementations may create a Git ref derived from `kid` that points to `keyOid`, thereby keeping the key object reachable and preventing garbage collection.
 ```JSON
 {
-    "refs/kv/<kid_shard>/key-<kid_trail>": <keyOid>
+    "refs/<namespace>/key-<kid_shard>/<kid_trail>": <keyOid>
 }
 ```
 
-Listing all refs matching the prefix `refs/kv/<shard>/key-` yields all key-value pairs along with which keys are not persistent, shard-wise.
+### Listing of Keys
+Listing all refs matching the prefix `refs/<namespace>/key-<shard>/` yields all key-value pairs along with which keys are not persistent, shard-wise.
 
 ### Atomic Writes with Optimistic Concurrency Control
 - All writes are atomic
@@ -206,7 +208,9 @@ function write (
             newValue: <optional>,
             oldValue: <optional>,
             overwrite: <optional boolean>,
-            ttl: <optional non-negative integer>
+            ttl: <optional non-negative integer>,
+            listable: <optional boolean>,
+            typeSafe: <optional boolean>
         },
         ...
     ]
@@ -225,7 +229,7 @@ function write (
 - The actual writes to the Git server are achieved internally using Git `receive-pack` requests with `atomic` capability. The Git CLI equivalent is 
 ```bash
 git push --atomic \
- --force-with-lease=<kv-ref>:<oldValOid> \
+ --force-with-lease=<key-ref-kv>:<oldValOid> \
  <newValOid>:<key-ref-kv> \
  <expiryWindowOid>:<key-ref-kx> \
  <expiryIndexOid>:<exp-ref>
@@ -235,6 +239,7 @@ git push --atomic \
 - If no codec is supplied, `newValue` must be stored in plaintext, and metadata must include `encrypted: false`.
 
 ### Reads
+- Unlike the write method which requires the key as a parameter, the read method can also take `kid` instead of a key.
 - Reading a value is performed in the following steps
     1. Resolution of the `kv`-suffixed ref derived from the `kid` (itself derived from the logical key). This yields `valueOid`. Resolution is performed using Git's smart HTTP protocol v2 via the `ls-refs` command with the appropriate prefix(es).
     2. Retrieve the corresponding object (data + metadata) using a CDN or a user-provided custom retrieval method, based on `valueOid`.
@@ -244,7 +249,7 @@ git push --atomic \
     2. Resolve the `exp-<expiryWindowOid>`-prefixed ref derived from the same `kid`, yielding `expiryIndexOid`, again using `ls-refs`.
     3. Retrieve the integer values represented by the commits `expiryWindowOid` and `expiryIndexOid`, preferably from a local cache. On cache miss, retrieve them from a CDN or via a user-provided custom method, and reconstruct `expiryAt`.
 - If CDN-based or user-provided retrieval methods fail, implementations may retrieve objects directly from the Git server using `upload-pack`. This, however, adds latency and server load.
-- Implementations must provide separate methods for value and expiry reads, each supporting multiple keys.
+- Implementations must provide separate methods for value and expiry reads, each supporting multiple keys. For efficiency, value reads may yield stale values for expired keys unless user specifically opts for non-stale values.
 - Multi-key reads are not atomic. Ref resolution via `ls-refs` does not guarantee that all returned refs correspond to a single repository snapshot. As a result, concurrent writes may cause different keys to be resolved against different repository states. This protocol intentionally uses a single ref per key for key–value mapping in order to guarantee single-key read consistency, even in the presence of concurrent writes.
 
 ### Public CDN URLs
