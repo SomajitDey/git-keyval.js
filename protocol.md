@@ -76,23 +76,57 @@ This protocol requires a Git repository. Users who do not opt for self-hosting m
     User-provided fetch-route always takes precedence over the defaults (public CDN > well-known provider API > Git-wire-protocol-v2).
 
 ## Design Overview
-This protocol does not see Git as a mere version control system for source-codes. Instead it reimagines Git as an optimal (deduplicated and delta-compressed) object storage with an extremely efficient key-value based index (Git refs with reftables). In this approach:
+This protocol does not see Git as a mere version-control-system for source-codes. Instead it reimagines Git as an *optimal object-storage* (deduplicated data and metadata, aggressively delta-compressed and deflated) *with an extremely efficient key-value based index* (Git refs with reftables) *and object-retrieval* (pack-index and delta-patching). Git is also attractive in its *built-in repository-health-management* (GC or [prune](https://git-scm.com/docs/git-prune)) *and customizability* (hooks). With this perspective:
 
 - A Git-blob contains the raw bytes of data
-- A Git-tree points to data-bytes and data-type (encoded in another blob) at canonical paths
-- A Git-commit packs metadata through the commit-message and contains the data-packing tree as its root tree
 
-Together, they encode a logical object (data + metadata).
+- A Git-tree points to the
+    1. data-bytes
+    2. encryption-status (boolean) and data-type &mdash; such as `boolean`, `strings`, `binary-blob` etc.
+    3. mime-type &mdash; equivalent to `Content-Type` http-header, such as `text/json`
 
-To keep commit-graphs leanest and therefore boost `upload-pack` performance, commits may not have any parent commit(s).
+    each encoded in its own deduplicated (reusable) blob at canonical paths
 
-For maximum deduplication and therefore reusability (even across repos), all these root commits may share the same invariant committer and author details and timestamps.
+- A Git-commit points to such a tree (which, in turn, points to the data-bytes and -type etc.) as its root-tree and stores other metadata through its commit-message
+
+A complete data-object may be retrieved from a commit-OID in two independent ways:
+
+**Route A**
+
+This route requires a custom- or public-CDN (such as jsDelivr, Statically or raw.githack)
+
+Step-1. Fetch the data-bytes, data-type, and mime-type blobs parallely (or concurrently) from a CDN using the commit-OID and the canonical paths.
+
+Step-2. Reconstruct the data from the bytes, type and encryption-status.
+
+**Route B**
+
+This route requires either a provider-API or the Git-wire-protocol-v2 (`upload-pack` with `fetch`).
+
+Step-1. Fetch a commit-object using Git with OID or using IPFS with the CID derived from the Git-OID. Read metadata from the commit-message which encodes
+    
+    - encryption-status
+    - data-type signature
+    - mime-type
+    - data-bytes address (Git-blob-OID or IPFS-CID) 
+
+Step-2. Fetch data-bytes from Git (using blob-OID) or IPFS (using CID)
+
+Step-3. Reconstruct the data from the bytes, type and encryption-status
+
+Note: If Git-wire-protocol-v2 is needed for fetching the small commit-object only, then `upload-pack` with `fetch` may be passed `depth 1` and `filter=combine:tree:0+blob:none` for best performance
+
+Performance optimization is achieved as follows:
+
+- Because trees only appear as root-trees, and never as sub-trees, expensive tree-walks are eliminated. Also, to keep the commit-graphs leanest and therefore boost `upload-pack` performance, commits may not have any parent commit(s).
+
+- For maximum deduplication and therefore reusability (even across repos), all these root commits may share the same invariant committer and author details and timestamps.
 
 Key-value mapping may be manifested as a unique Git-ref, derived from the key object, pointing to the value object.
 
 For storing expiry timestamps, key-expiry mappings may be implemented using additional refs with appropriate prefix (designed for optimal listing of refs during the periodic stale-cleanup operations).
 
-Reads amount to ref-resolutions, followed by object-fetches.
+Reads amount to ref-resolutions, followed by object-fetches via Route A or B as described above.
 
 Writes and deletions amount to atomic ref-updates with the following compare-and-swap schema:
 ```
