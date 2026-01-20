@@ -1,5 +1,9 @@
-# Git-KeyVal (v1.0.0)
-A Git-native, provider-agnostic, IPFS-aware protocol defining a content-addressed key–value registry with atomic writes, optional encryption, TTL-based lifecycle management and highly-scalable read-heavy access.
+# Git-KeyVal
+A Git-native, provider-agnostic, IPFS-aware protocol defining a content-addressed and reuse-friendly key–value registry with atomic writes, optional encryption, TTL-based lifecycle management and highly-scalable read-heavy access.
+
+It can turn even an existing Git repository into a key-value store without requiring any server-side configuration or corrupting or deleting any existing data.
+
+**Links**: [Specifications](./specifications.md) | Reference Implementation (JS) | [Glossary](./glossary.md)
 
 ## Audience
 This protocol is designed for those end-users who
@@ -12,19 +16,23 @@ This protocol is designed for those end-users who
 - do not mind optionally encrypting their data with a repo-scoped salt for optimal intra-repo reuse (prevents only cross-repo correlation)
 - accept versioning, if required, via persistent immutable CDN-cacheable Git tags instead of mutable branches with linear histories
 - rarely, if at all, need to list all the key-value pairs
+- accept support for containers such as arrays and dictionaries (hash-maps) as subopitmal second-class citizens
+- optionally, need to use existing Git repository for storing key-value registry without corrupting existing data
 
-Although this protocol is designed to work over any Git-hosting provider&mdash; including GitHub, GitLab, Bitbucket, and self-hosted or on-premise Git servers&mdash; providers that align their infrastructure with this protocol can offer low-cost, durable object storage with access-controlled, atomic writes, scalable globally distributed CDN-backed reads, optional encryption, optional read atomicity and TTL-based lifecycle management.
+Although this protocol is designed to work over any Git-hosting provider&mdash; including GitHub, GitLab, Bitbucket, and self-hosted or on-premise Git servers&mdash; providers that align their infrastructure with this protocol can offer low-cost, durable object storage with access-controlled atomic writes, scalable globally distributed CDN-backed reads, optional encryption, optional read atomicity and TTL-based lifecycle management.
+
+For a quick appreciation of scope, refer to the [example-use-cases](./example-use-cases.md).
 
 ## Non-Goals
 The protocol is not optimized for
 - ephemeral or single use data (e.g. nonces, one-time download artifacts)
-- version control using append-only log-semantics (e.g. single Git branch with a linear history)
+- version control using a globally unique commit per version (e.g. single Git branch with a linear history)
 - low-latency, high-throughput write workloads such as counters, metrics or ratelimiters
-- containers such as arrays or dictionaries
 - atomic multi-key reads
-- any TTL granularity other than day(s)
+- any TTL granularity lower than a day
+- containers such as arrays or dictionaries &mdash; supported yet suboptimal
 
-While these use cases fall outside the protocol’s design goals, providers may support or optimize for them via higher-level REST APIs built atop the protocol, without extending or weakening its core guarantees.
+While these use cases fall outside the protocol’s design goals, providers may support or optimize for them via a REST API built atop the protocol, without extending or weakening its core guarantees.
 
 ## Fair Use Policy
 This protocol requires a Git repository. Users who do not opt for self-hosting may utilize personal repositories managed by third-party hosting providers (e.g., GitHub, GitLab, or Bitbucket). For scalable delivery, public CDNs such as jsDelivr, Statically, or raw.githack may be employed. Users must ensure their activities comply with the respective providers' acceptable use policies and fair usage limits.
@@ -41,7 +49,7 @@ This protocol requires a Git repository. Users who do not opt for self-hosting m
     - `upload-pack` with `fetch` command for object-delivery. This can be optimized with `depth 1` and `filter=combine:blob:none+tree:0` for shallow, partial (treeless, blobless) cloning
     - `receive-pack` for pushing objects and atomic compare-and-swap ref-updates to the Git server (remote)
 
-    Although a Git server can expose this v2-wire-protocol over smart HTTP(s), some client implementations may not be able to avail this transport for a given provider, e.g. browsers block smart-HTTP-wire-protocol for GitHub due to the absence of CORS-headers. To tackle such exceptions, as well as to comply with desired usage patterns, client implementations must access the upstream Git database through a web-API whenever such is provided by the respective vendor (e.g. GitHub's REST and GraphQL APIs, GitLab's REST API - all ratelimited).
+    Although a Git server can expose this v2-wire-protocol over smart HTTP(s), some client implementations may not be able to avail this transport for a given provider, e.g. browsers block smart-HTTP-wire-protocol for GitHub due to the absence of CORS-headers. To tackle such exceptions, as well as to comply with desired usage patterns, client implementations must access the upstream Git database through a web-API whenever such is provided by the respective vendor (e.g. GitHub's REST and GraphQL APIs).
 
 - Downloading a Git blob from a CDN requires passing its path along with the version in the form of an immutable tag or commit OID. Additionally, if the path has a known extension, the `Content-Type` header in the CDN's response reflects the corresponding MIME-type. This aligns with popular public CDNs such as jsDelivr, statically and raw.githack.
 
@@ -76,18 +84,38 @@ This protocol requires a Git repository. Users who do not opt for self-hosting m
     User-provided fetch-route always takes precedence over the defaults (public CDN > well-known provider API > Git-wire-protocol-v2).
 
 ## Design Overview
-This protocol does not see Git as a mere version-control-system for source-codes. Instead it reimagines Git as an *optimal object-storage* (deduplicated data and metadata, aggressively delta-compressed and deflated) *with an extremely efficient key-value based index* (Git refs with reftables) *and object-retrieval* (pack-index and delta-patching). Git is also attractive in its *built-in repository-health-management* (GC or [prune](https://git-scm.com/docs/git-prune)) *and customizability* (hooks). With this perspective:
+### Why Git
+This protocol does not view Git as a mere version-control-system for source-codes. Instead it reimagines Git as an *optimal object-storage* (i.e. deduplicated data and metadata with low-entropy contents aggressively delta-compressed and deflated) *with an extremely efficient key-value based index* (i.e. Git refs with reftables) *and object-retrieval* (i.e. pack-index). Git is also attractive in its *built-in repository-health-management* (GC or [prune](https://git-scm.com/docs/git-prune)) *and customizability* (hooks).
 
-- A Git-blob contains the raw bytes of data
+### Single Source of Truth (SSoT) repository
+For strong consistency, all writes must operate only on a bare SSoT repository. Reads may be served from the SSoT (strong consistency) or mirrors (partial or full clones) and CDNs (eventual consistency).
+
+### Object model: data-objects
+With this perspective:
+
+- A Git-blob contains only the raw bytes of data
 
 - A Git-tree points to the
     1. data-bytes
     2. encryption-status (boolean) and data-type &mdash; such as `boolean`, `strings`, `binary-blob` etc.
     3. mime-type &mdash; equivalent to `Content-Type` http-header, such as `text/json`
+    4. checksum &mdash; for collision-resistance and integrity checks
 
     each encoded in its own deduplicated (reusable) blob at canonical paths
 
-- A Git-commit points to such a tree (which, in turn, points to the data-bytes and -type etc.) as its root-tree and stores other metadata through its commit-message
+- A Git-commit points to such a tree as its root-tree and encodes metadata in its commit-message
+
+Performance optimization is achieved as follows:
+
+- Because trees only appear as root-trees, and never as sub-trees, expensive tree-walks are eliminated. Also, to keep the commit-graphs leanest and therefore keep `upload-pack` performant, commits may not have any parent commit(s).
+
+- For maximum deduplication and therefore reusability (even across repos), all these root commits may share the same invariant committer and author details and timestamps. These exclusive author-committer details also distinguish git-keyval commits from other commits in a
+monorepo.
+
+For any given data-object, therefore, its canonical git-keyval commit-OID may be derived deterministically.
+
+
+### Fetching a data-object
 
 A complete data-object may be retrieved from a commit-OID in two independent ways:
 
@@ -103,7 +131,7 @@ Step-2. Reconstruct the data from the bytes, type and encryption-status.
 
 This route requires either a provider-API or the Git-wire-protocol-v2 (`upload-pack` with `fetch`).
 
-Step-1. Fetch a commit-object using Git with OID or using IPFS with the CID derived from the Git-OID. Read metadata from the commit-message which encodes
+Step-1. Fetch a commit-object using Git with OID or using IPFS with the CID derived from the Git-OID. Parse commit-message which encodes
     
     - encryption-status
     - data-type signature
@@ -114,21 +142,44 @@ Step-2. Fetch data-bytes from Git (using blob-OID) or IPFS (using CID)
 
 Step-3. Reconstruct the data from the bytes, type and encryption-status
 
-Note: If Git-wire-protocol-v2 is needed for fetching the small commit-object only, then `upload-pack` with `fetch` may be passed `depth 1` and `filter=combine:tree:0+blob:none` for best performance
+Note: If Git-wire-protocol-v2 is needed for fetching the small commit-object only, then `upload-pack` with `fetch` may be passed `depth 1` and `filter=combine:tree:0+blob:none` for best performance.
 
-Performance optimization is achieved as follows:
+### Object-model: data-containers
 
-- Because trees only appear as root-trees, and never as sub-trees, expensive tree-walks are eliminated. Also, to keep the commit-graphs leanest and therefore boost `upload-pack` performance, commits may not have any parent commit(s).
+Data-containers point to a set of unique data-objects, of the same or mixed type(s), mapped to unique integer- (for arrays) or string- (for dictionaries) indices. Multiple indices may point to the same data-object. Such a container may be encoded in a second-generation commit with multiple parents, each of which is a first-generation or root commit.
 
-- For maximum deduplication and therefore reusability (even across repos), all these root commits may share the same invariant committer and author details and timestamps.
+- The parents point to the member objects (this also saves the object-commits from being GC'd by keeping them reachable).
 
-Key-value mapping may be manifested as a unique Git-ref, derived from the key object, pointing to the value object.
+- The index-object map may be efficiently encoded in the commit message.
 
-For storing expiry timestamps, key-expiry mappings may be implemented using additional refs with appropriate prefix (designed for optimal listing of refs during the periodic stale-cleanup operations).
+- The root-tree now encodes the container's cardinality in its data-bytes blob and data-type and encryption-status in its data-type blob. Such a root-tree is reusable across all containers with the same cardinality, data-type and encryption-status.
 
+### Fetching a data-container
+
+To retrieve a container, the corresponding commit may simply be fetched and parsed using Route B > Step-1 (explained above). The actual member-objects, pointed to by the indices, may be fetched lazily using the parent commit-OIDs, as and when needed.
+
+Note: If only type and/or cardinality is required for a container, the CDN-backed Route A may be used.
+
+### Pushing objects
+Because objects (data-objects and -containers) are simply Git-objects (commits, trees and blobs), such may be pushed to the Git server using either
+
+- provider-APIs (e.g. GitHub REST and GraphQL APIS), or
+- as a packfile using Git-wire-protocol-v2 over smart HTTP.
+
+### Keys and values
+Any data-object may be a key or a value. Data-containers, however, can only be values.
+
+A key-value map may be manifested as a unique Git ref, derived from the key object, pointing to the value object.
+
+### TTL-based expiry
+
+For storing expiry timestamps, key-expiry maps may be implemented using additional refs with appropriate prefix (designed for optimal listing of refs during the periodic stale-cleanup operations).
+
+### KV reads
 Reads amount to ref-resolutions, followed by object-fetches via Route A or B as described above.
 
-Writes and deletions amount to atomic ref-updates with the following compare-and-swap schema:
+### KV writes
+Writes and deletions amount to atomic (multi) ref-updates with the following compare-and-swap schema:
 ```
 atomic {
     <keyRefA> <oldValueA> <newValueA>,
@@ -137,6 +188,9 @@ atomic {
     ...
 }
 ```
+
+### Further reading
+For further details, rationales and nuances including CDN-served canonical download URLs, see the [protocol specifications](./specifications.md).
 
 ## Specifications
 In the following, JavaScript (JS) is used as the reference implementation.
@@ -366,9 +420,11 @@ git push --atomic \
 If encryption is absent, implementations may derive or expose a public CDN URL for directly downloading the value for any given key, with appropriate CORS and Content-Type headers. A path with an extension (other than `raw` and `package.json`) exists inside the root tree (as specified in the Object Model) so that a CDN can set the proper Content-Type headers when serving that path.
 
 ## Implementation Roadmap
+A reference client implemented in JavaScript may be shipped with this whitepaper. Initial support may be limited to GitHub only, thanks to GitHub's extensive REST and GraphQL APIs.
+
+Future iterations may also ship a Node.js backend to serve a REST-API wrapper for the Git-KeyVal operations. This backend would run on the server hosting the SSoT repository and operate locally on the repository using the powerful and performant Git-CLI. For self-hosted instances, this API enables clients to avoid the Git-wire-protocol entirely.
+
+Implementations in other languages and support for specific providers may be developed by the community.
 
 ## Migration and Forkability
-Because logical objects and key–value mappings co-exist within a single Git repository, migrating a Git-KeyVal registry is primarily a matter of copying objects and refs. A fork or mirror clone yields a complete, self-contained snapshot of the registry. Implementations may rewrite, delete, or reorganize refs to construct a fresh registry without rewriting object data, making migrations, backups, and experimental ref layouts inexpensive and reversible.
-
-## Example Use Cases
-See [example-use-cases.md](./example-use-cases.md)
+Because data and key–value mappings co-exist within a single Git repository (SSoT), migrating a Git-KeyVal registry is primarily a matter of copying objects and refs. A fork or mirror clone yields a complete, self-contained snapshot of the registry. Implementations may rewrite, delete, or reorganize refs to construct a fresh registry without rewriting object data, making migrations, backups, and experimental ref layouts inexpensive and reversible.
