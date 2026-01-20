@@ -35,7 +35,7 @@ The protocol is not optimized for
 While these use cases fall outside the protocol’s design goals, providers may support or optimize for them via a REST API built atop the protocol, without extending or weakening its core guarantees.
 
 ## Fair Use Policy
-This protocol requires a Git repository. Users who do not opt for self-hosting may utilize personal repositories managed by third-party hosting providers (e.g., GitHub, GitLab, or Bitbucket). For scalable delivery, public CDNs such as jsDelivr, Statically, or raw.githack may be employed. Users must ensure their activities comply with the respective providers' acceptable use policies and fair usage limits.
+This protocol requires a Git repository. Users who do not opt for self-hosting may utilize repositories managed by third-party hosting providers (e.g., GitHub, GitLab, or Bitbucket). For scalable delivery, public CDNs such as jsDelivr, Statically, or raw.githack may be employed. Users must ensure their activities comply with their respective providers' Acceptable Use Policies, Terms of Service and fair usage limits.
 
 ## Core Assumptions
 - Git uses reftables as ref-backend. Although this protocol works with the files-backend, reftables provide maximum performance and scalability. Reftables are specifically designed for high ref-counts and high ref-churn.
@@ -121,7 +121,7 @@ A complete data-object may be retrieved from a commit-OID in two independent way
 
 **Route A**
 
-This route requires a custom- or public-CDN (such as jsDelivr, Statically or raw.githack)
+This route is the most efficient and requires a custom- or public-CDN (such as jsDelivr, Statically or raw.githack).
 
 Step-1. Fetch the data-bytes, data-type, and mime-type blobs parallely (or concurrently) from a CDN using the commit-OID and the canonical paths.
 
@@ -129,7 +129,7 @@ Step-2. Reconstruct the data from the bytes, type and encryption-status.
 
 **Route B**
 
-This route requires either a provider-API or the Git-wire-protocol-v2 (`upload-pack` with `fetch`).
+This route may be used only when Route A is unavailable. It requires either a provider-API (e.g. GitHub REST and GraphQL APIs) or the Git-wire-protocol-v2 over smart HTTP (`upload-pack` with `fetch`).
 
 Step-1. Fetch a commit-object using Git with OID or using IPFS with the CID derived from the Git-OID. Parse commit-message which encodes
     
@@ -146,22 +146,28 @@ Note: If Git-wire-protocol-v2 is needed for fetching the small commit-object onl
 
 ### Object-model: data-containers
 
-Data-containers point to a set of unique data-objects, of the same or mixed type(s), mapped to unique integer- (for arrays) or string- (for dictionaries) indices. Multiple indices may point to the same data-object. Such a container may be encoded in a second-generation commit with multiple parents, each of which is a first-generation or root commit.
+Data-containers point to a set of unique data-objects (members), of the same or mixed type(s), mapped to unique integer- (for arrays) or string- (for dictionaries) indices. Multiple indices may point to the same data-object.
 
-- The parents point to the member objects (this also saves the object-commits from being GC'd by keeping them reachable).
+Explicit support for data-containers discourages users from implementing containers with data-objects, such as JSON strings. Such hacks create object-store bloat (a unique blob, tree and commit per container state) and cannot optimize by reusing the member objects.
+
+A container may be encoded in a second-generation commit with multiple parents, each of which is a first-generation or root commit.
+
+- The parent commits point to the member objects (this also saves the parent commits from being GC'd by keeping them reachable).
 
 - The index-object map may be efficiently encoded in the commit message.
 
 - The root-tree now encodes the container's cardinality in its data-bytes blob and data-type and encryption-status in its data-type blob. Such a root-tree is reusable across all containers with the same cardinality, data-type and encryption-status.
 
+Details of the commit-message encoding along with a discussion of the compression-performance tradeoffs may be found [elsewhere](./specifications.md).
+
 ### Fetching a data-container
 
-To retrieve a container, the corresponding commit may simply be fetched and parsed using Route B > Step-1 (explained above). The actual member-objects, pointed to by the indices, may be fetched lazily using the parent commit-OIDs, as and when needed.
+To retrieve a container, the corresponding commit-object may simply be fetched and parsed using Route B > Step-1 (with `depth 1`). The actual member-objects, pointed to by the indices, may then be fetched lazily from the parent commit-OIDs using Route A, as and when needed.
 
-Note: If only type and/or cardinality is required for a container, the CDN-backed Route A may be used.
+Note: If only type and cardinality are required for a container, the CDN-backed Route A may be used, without fetching the commit-object at all.
 
-### Pushing objects
-Because objects (data-objects and -containers) are simply Git-objects (commits, trees and blobs), such may be pushed to the Git server using either
+### Pushing data
+Because data-objects and -containers are simply Git-objects (commits, trees and blobs), such may be pushed to the Git server using either
 
 - provider-APIs (e.g. GitHub REST and GraphQL APIS), or
 - as a packfile using Git-wire-protocol-v2 over smart HTTP.
