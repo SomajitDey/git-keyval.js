@@ -14,7 +14,7 @@ This protocol is designed for those end-users who
 - accepts eventual consistency and reasonable staleness during reads. Multi-key reads are not guaranteed to be transactional. Some providers, however, may provide atomic multi-key reads with freshness guarantees, albeit gated behind stricter ratelimits or higher subscription tiers
 - preferably, reuse both keys and values
 - do not mind optionally encrypting their data with a repo-scoped salt for optimal intra-repo reuse (prevents only cross-repo correlation)
-- accept versioning, if required, via persistent immutable CDN-cacheable Git tags instead of mutable branches with linear histories
+- accept version-log, if required, via persistent immutable CDN-cacheable Git tags instead of mutable branches with linear histories. Some providers, including GitHub, may expose history through ref-logs
 - rarely, if at all, need to list all the key-value pairs
 - accept support for containers such as arrays and dictionaries (hash-maps) as subopitmal second-class citizens
 - optionally, need to use existing Git repository for storing key-value registry without corrupting existing data
@@ -85,7 +85,13 @@ This protocol requires a Git repository. Users who do not opt for self-hosting m
 
 ## Design Overview
 ### Why Git
-This protocol does not view Git as a mere version-control-system for source-codes. Instead it reimagines Git as an *optimal object-storage* (i.e. deduplicated data and metadata with low-entropy contents aggressively delta-compressed and deflated) *with an extremely efficient key-value based index* (i.e. Git refs with reftables) *and object-retrieval* (i.e. pack-index). Git is also attractive in its *built-in repository-health-management* (GC or [prune](https://git-scm.com/docs/git-prune)) *and customizability* (hooks).
+This protocol does not view Git as a mere version-control-system for source-codes. Instead it reimagines Git as an *optimal object-storage* (i.e. deduplicated data and metadata with low-entropy contents aggressively delta-compressed and deflated) *with an extremely efficient key-value based index* (i.e. Git refs with reftables) *and object-retrieval* (i.e. pack-index).
+
+Git can handle concurrent writes (pushes) and distributed reads (fetches).
+
+Backups are trivial in Git (mirror clones).
+
+Git is also attractive in its *built-in repository-maintenance* (GC or [prune](https://git-scm.com/docs/git-prune)) *and customizability* (hooks).
 
 ### Single Source of Truth (SSoT) repository
 For strong consistency, all writes must operate only on a bare SSoT repository. Reads may be served from the SSoT (strong consistency) or mirrors (partial or full clones) and CDNs (eventual consistency).
@@ -194,6 +200,47 @@ atomic {
     ...
 }
 ```
+
+### Server-side setup (optional)
+Self-hosted instances as well as providers aligned with Git-KeyVal may host a REST-API backend that can access the SSoT repository on local filesystem, using the powerful and performant Git CLI. For writes, ref-resolutions and commit-object fetches, clients may use this API directly, bypassing the Git-wire-protocol-v2 route and its corresponding performance bottlenecks and complexities. This enables, among other optimizations, high write throughput, transactional reads with multi-key consistency and update logs. 
+
+- For writes, the backend may accept the payload from client and perform atomic updates on the repo in batches using
+    ```bash
+    git update-ref --create-reflog --stdin [--batch-updates] < transaction-script.txt
+    ```
+    New objects may be created from the payload using
+    ```bash
+    git hash-object -w --stdin
+
+    git mktree
+
+    git commit-tree
+    ```
+
+- Ref lookup and prefix scans may be served using fast reftables:
+    ```bash
+    git show-ref
+
+    git for-each-ref --format=
+    ```
+    Atomic ref lookups (for strong read consistency) may be performed using
+    ```bash
+    git update-ref --stdin < verify-script
+    ```
+    where verify-script contains commands of the form:
+    ```text
+    verify <ref> [<old-oid>]
+    ```
+
+- Commit objects and raw blobs may be served to clients or edge-nodes (CDN) using
+    ```bash
+    git cat-file -p <OID>
+    ```
+
+- History may be exposed using
+    ```bash
+    git reflog show
+    ```
 
 ### Further reading
 For further details, rationales and nuances including CDN-served canonical download URLs, see the [protocol specifications](./specifications.md).
