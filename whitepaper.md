@@ -3,9 +3,9 @@ A Git-native, provider-agnostic, IPFS-aware protocol defining a content-addresse
 
 It can turn even an existing Git repository into a key-value store without requiring any server-side configuration and without corrupting, rewriting or deleting any existing repository data.
 
-Git-KeyVal is not a hack. It is designed from the ground up to align with Git's core object model, storage optimizations, and standard semantics, while deliberately avoiding known Git performance bottlenecks in indexing, traversal, and object retrieval.
+Git-KeyVal is not a hack. It is designed from the ground up to align with Git's core object model, storage optimizations, and standard semantics, while deliberately avoiding known Git performance bottlenecks in indexing, traversal, and object retrieval. Git-KeyVal does not fight or coerce Git. With Git-KeyVal, Git *naturally* evolves from a *version-control repository for source-code* to an *indexed, deduplicated repository for typed and structured data, with optional version-logging and TTL-based lifecycle semantics*.
 
-**Links**: [Specifications](./specifications.md) | Reference Implementation (JS) | [Glossary](./glossary.md)
+**Quick Links**: [Specifications](./specifications.md) | Reference Implementation (JS) | [Glossary](./glossary.md)
 
 ## Audience
 This protocol is designed for those end-users who
@@ -89,7 +89,7 @@ This protocol requires a Git repository. Users who do not opt for self-hosting m
 This section assumes the reader have atleast basic understanding of [Git and its internals](https://git-scm.com/book/en/v2), and [content-addressed file-sharing in IPFS](https://docs.ipfs.tech/concepts/lifecycle/).
 
 ### Why Git
-This protocol does not view Git as a mere version-control-system for source-codes. Instead it reimagines Git as an *optimal object-storage* (i.e. deduplicated data and metadata with low-entropy contents aggressively delta-compressed and deflated) *with an extremely efficient key-value based index* (i.e. Git refs with reftables) *and object-retrieval* (i.e. pack-index).
+This protocol does not view Git as a mere version-control system for source-codes. Instead it reimagines Git as an *optimal object-storage* (i.e. deduplicated data and metadata with low-entropy contents aggressively delta-compressed and deflated) *with an extremely efficient key-value based index* (i.e. Git refs with reftables) *and object-retrieval* (i.e. pack-index).
 
 Git can handle concurrent writes (pushes) and distributed reads (fetches).
 
@@ -159,17 +159,29 @@ Note: If Git-wire-protocol-v2 is needed for fetching the small commit-object onl
 
 ### Object-model: data-containers
 
-Data-containers point to a set of unique data-objects (members), of the same or mixed type(s), mapped to unique integer- (for arrays) or string- (for dictionaries) indices. Multiple indices may point to the same data-object.
+Data-containers represent collections of data-objects (members), of homogeneous or mixed types. Containers may be structured in one of the following modes:
 
-Explicit support for data-containers discourages users from implementing containers with data-objects, such as JSON strings. Such hacks create object-store bloat (a unique blob, tree and commit per container state) and cannot optimize by reusing the member objects.
+- Array: members are mapped to unique integer indices.
+
+- Dictionary: members are mapped to unique string indices (hashes).
+
+- Multimap: a single string index (label) may map to multiple members.
+
+- Set: members are unindexed and canonically ordered.
+
+Multiple indices may reference the same member, enabling aliasing and reuse. Containers may also reference other containers as members, forming an acyclic object graph.
+
+Explicit support for data-containers discourages users from implementing containers with data-objects, such as JSON strings. Such hacks lead to excessive object churn (a unique blob, tree and commit per container state) and cannot optimize by reusing the member objects.
 
 A container may be encoded in a second-generation commit with multiple parents, each of which is a first-generation or root commit.
 
-- The parent commits point to the member objects (this also saves the parent commits from being GC'd by keeping them reachable).
+- The parent commits point to the member objects. This design ensures that member commits remain reachable as long as the container commit itself is reachable.
 
 - The index-object map may be efficiently encoded in the commit message.
 
-- The root-tree now encodes the container's cardinality in its data-bytes blob and data-type and encryption-status in its data-type blob. Such a root-tree is reusable across all containers with the same cardinality, data-type and encryption-status.
+- The root-tree encodes the container's cardinality in the data-bytes blob, along with the members' shared data-type and encryption-status in the data-type blob. Data-type and encryption-status may store `mixed` for heterogenous containers. A root-tree is reusable across all containers with the same cardinality, data-type and encryption-status.
+
+In standard Git lingo, a container commit is an octopus merge. However, in Git-KeyVal, an octopus merge only represents a collection of (parent) commits, not merged histories. Parent commits represent membership, not ancestry. No tree merging, conflict resolution, or history semantics are involved.
 
 Details of the commit-message encoding along with a discussion of the compression-performance tradeoffs may be found [elsewhere](./specifications.md).
 
@@ -183,7 +195,7 @@ Note: If only type and cardinality are required for a container, the CDN-backed 
 Because data-objects and -containers are simply Git-objects (commits, trees and blobs), such may be pushed to the Git server using either
 
 - provider-APIs (e.g. GitHub REST and GraphQL APIS), or
-- as a packfile using Git-wire-protocol-v2 over smart HTTP.
+- as a packfile using Git-wire-protocol-v2 over smart HTTP (`receive-pack`).
 
 ### Keys and values
 Any data-object may be a key or a value. Data-containers, however, can only be values.
@@ -195,10 +207,18 @@ A key-value map may be manifested as a unique Git ref, derived from the key obje
 For storing expiry timestamps, key-expiry maps may be implemented using additional refs with appropriate prefix (designed for optimal listing of refs during the periodic stale-cleanup operations).
 
 ### KV reads
-Reads amount to ref-resolutions, followed by object-fetches via Route A or B as described above.
+Reads amount to
+1. ref-resolutions from the SSoT using
+    - provider API (preferred)
+    - Git-wire-protocol-v2 `upload-pack` with `fetch` using prefix(es)
+
+2. object-fetches via Route A or B as described above.
 
 ### KV writes
-Writes and deletions amount to atomic (multi) ref-updates with the following compare-and-swap schema:
+Writes amount to
+1. Creating and pushing the required Git objects (blobs, trees and commits) if non-existent.
+
+2. Pushing atomic (multi) ref-updates with the following compare-and-swap schema:
 ```
 atomic {
     <keyRefA> <oldValueA> <newValueA>,
@@ -207,6 +227,10 @@ atomic {
     ...
 }
 ```
+
+If using `receive-pack` for push, both objects (packfile) and ref-updates may be POSTed together in the same payload.
+
+KV deletions are simply ref-updates with `000000000000000000000000000000000000000` as the new target commit-OID.
 
 ### Server-side setup (optional)
 Self-hosted instances as well as providers aligned with Git-KeyVal may host a REST-API backend that can access the SSoT repository on local filesystem, using the powerful and performant Git CLI. For writes, ref-resolutions and commit-object fetches, clients may use this API directly, bypassing the Git-wire-protocol-v2 route and its corresponding performance bottlenecks and complexities. This enables, among other optimizations, high write throughput, transactional reads with multi-key consistency and update logs. 
