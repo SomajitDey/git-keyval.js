@@ -1,7 +1,9 @@
 # Git-KeyVal
-A Git-native, provider-agnostic, IPFS-aware protocol defining a content-addressed and reuse-friendly key–value registry with atomic writes, optional encryption, TTL-based lifecycle management and highly-scalable read-heavy access.
+A Git-native, provider-agnostic, IPFS-aware protocol defining a content-addressed and reuse-friendly key–value registry with atomic writes, fast, scalable, trustless reads, optional encryption and TTL-based lifecycle management.
 
-It can turn even an existing Git repository into a key-value store without requiring any server-side configuration or corrupting or deleting any existing data.
+It can turn even an existing Git repository into a key-value store without requiring any server-side configuration and without corrupting, rewriting or deleting any existing repository data.
+
+Git-KeyVal is not a hack. It is designed from the ground up to align with Git's core object model, storage optimizations, and standard semantics, while deliberately avoiding known Git performance bottlenecks in indexing, traversal, and object retrieval.
 
 **Links**: [Specifications](./specifications.md) | Reference Implementation (JS) | [Glossary](./glossary.md)
 
@@ -19,7 +21,7 @@ This protocol is designed for those end-users who
 - accept support for containers such as arrays and dictionaries (hash-maps) as subopitmal second-class citizens
 - optionally, need to use existing Git repository for storing key-value registry without corrupting existing data
 
-Although this protocol is designed to work over any Git-hosting provider&mdash; including GitHub, GitLab, Bitbucket, and self-hosted or on-premise Git servers&mdash; providers that align their infrastructure with this protocol can offer low-cost, durable object storage with access-controlled atomic writes, scalable globally distributed CDN-backed reads, optional encryption, optional read atomicity and TTL-based lifecycle management.
+Although this protocol is designed to work over any Git-hosting provider&mdash; including GitHub, GitLab, Bitbucket, and self-hosted or on-premise Git servers&mdash; providers that align their infrastructure with this protocol can offer low-cost, durable object storage with access-controlled atomic writes, scalable, globally distributed CDN-backed reads, optional encryption, optional read atomicity and TTL-based lifecycle management.
 
 For a quick appreciation of scope, refer to the [example-use-cases](./example-use-cases.md).
 
@@ -84,12 +86,14 @@ This protocol requires a Git repository. Users who do not opt for self-hosting m
     User-provided fetch-route always takes precedence over the defaults (public CDN > well-known provider API > Git-wire-protocol-v2).
 
 ## Design Overview
+This section assumes the reader have atleast basic understanding of [Git and its internals](https://git-scm.com/book/en/v2), and [content-addressed file-sharing in IPFS](https://docs.ipfs.tech/concepts/lifecycle/).
+
 ### Why Git
 This protocol does not view Git as a mere version-control-system for source-codes. Instead it reimagines Git as an *optimal object-storage* (i.e. deduplicated data and metadata with low-entropy contents aggressively delta-compressed and deflated) *with an extremely efficient key-value based index* (i.e. Git refs with reftables) *and object-retrieval* (i.e. pack-index).
 
 Git can handle concurrent writes (pushes) and distributed reads (fetches).
 
-Backups are trivial in Git (mirror clones).
+Backups and migrations are trivial in Git (mirror clones). Syncing with source is standard and bandwidth-efficient (push by source to mirror or pull by mirror from source, both transferring single packfile containing all required objects).
 
 Git is also attractive in its *built-in repository-maintenance* (GC or [prune](https://git-scm.com/docs/git-prune)) *and customizability* (hooks).
 
@@ -118,12 +122,11 @@ Performance optimization is achieved as follows:
 - For maximum deduplication and therefore reusability (even across repos), all these root commits may share the same invariant committer and author details and timestamps. These exclusive author-committer details also distinguish git-keyval commits from other commits in a
 monorepo.
 
-For any given data-object, therefore, its canonical git-keyval commit-OID may be derived deterministically.
-
+For any given data-object, therefore, its canonical git-keyval commit-OID may be derived deterministically. This enables trustless data fetching, as explained below.
 
 ### Fetching a data-object
 
-A complete data-object may be retrieved from a commit-OID in two independent ways:
+A complete data-object may be retrieved from a commit-OID in two independent, trustless ways:
 
 **Route A**
 
@@ -133,9 +136,11 @@ Step-1. Fetch the data-bytes, data-type, and mime-type blobs parallely (or concu
 
 Step-2. Reconstruct the data from the bytes, type and encryption-status.
 
+Step-3. Verify the commit-OID by deriving it canonically from the data.
+
 **Route B**
 
-This route may be used only when Route A is unavailable. It requires either a provider-API (e.g. GitHub REST and GraphQL APIs) or the Git-wire-protocol-v2 over smart HTTP (`upload-pack` with `fetch`).
+This route may be used only when Route A is unavailable. It requires either a provider-API (e.g. GitHub REST and GraphQL APIs) or the Git-wire-protocol-v2 over smart HTTP (`upload-pack` with `fetch`), and preferrably, IPFS. For example, the CDN-edge-nodes, forming a private IPFS cluster peer-to-peer, may use this route to fetch and cache data.
 
 Step-1. Fetch a commit-object using Git with OID or using IPFS with the CID derived from the Git-OID. Parse commit-message which encodes
     
@@ -147,6 +152,8 @@ Step-1. Fetch a commit-object using Git with OID or using IPFS with the CID deri
 Step-2. Fetch data-bytes from Git (using blob-OID) or IPFS (using CID)
 
 Step-3. Reconstruct the data from the bytes, type and encryption-status
+
+Step-4. Verify the commit-OID by deriving it canonically from the data.
 
 Note: If Git-wire-protocol-v2 is needed for fetching the small commit-object only, then `upload-pack` with `fetch` may be passed `depth 1` and `filter=combine:tree:0+blob:none` for best performance.
 
@@ -204,7 +211,7 @@ atomic {
 ### Server-side setup (optional)
 Self-hosted instances as well as providers aligned with Git-KeyVal may host a REST-API backend that can access the SSoT repository on local filesystem, using the powerful and performant Git CLI. For writes, ref-resolutions and commit-object fetches, clients may use this API directly, bypassing the Git-wire-protocol-v2 route and its corresponding performance bottlenecks and complexities. This enables, among other optimizations, high write throughput, transactional reads with multi-key consistency and update logs. 
 
-- For writes, the backend may accept the payload from client and perform atomic updates on the repo in batches using
+- For writes, the backend may accept the payload from client and perform fast (thanks to reftables), atomic updates on the repo in batches using
     ```bash
     git update-ref --create-reflog --stdin [--batch-updates] < transaction-script.txt
     ```
@@ -212,10 +219,11 @@ Self-hosted instances as well as providers aligned with Git-KeyVal may host a RE
     ```bash
     git hash-object -w --stdin
 
-    git mktree
+    git mktree --stdin [--missing]
 
     git commit-tree
     ```
+        The `--missing` option in `git mktree` allows for tree creation without verifying that the referred blobs actually exist in the repo. For scalability therefore, the blob objects may be stored elsewhere, such as in a separate object store or IPFS block store that may be common across all repos.
 
 - Ref lookup and prefix scans may be served using fast reftables:
     ```bash
@@ -240,6 +248,8 @@ Self-hosted instances as well as providers aligned with Git-KeyVal may host a RE
 - History may be exposed using
     ```bash
     git reflog show
+
+    git log --walk-reflogs
     ```
 
 ### Further reading
@@ -472,6 +482,9 @@ git push --atomic \
 ### Public CDN URLs
 If encryption is absent, implementations may derive or expose a public CDN URL for directly downloading the value for any given key, with appropriate CORS and Content-Type headers. A path with an extension (other than `raw` and `package.json`) exists inside the root tree (as specified in the Object Model) so that a CDN can set the proper Content-Type headers when serving that path.
 
+## Migration and Forkability
+Because data and key–value mappings co-exist within a single Git repository (SSoT), migrating a Git-KeyVal registry is primarily a matter of copying objects and refs. A fork or mirror clone yields a complete, self-contained snapshot of the registry. Implementations may rewrite, delete, or reorganize refs to construct a fresh registry without rewriting object data, making migrations, backups, and experimental ref layouts inexpensive and reversible.
+
 ## Implementation Roadmap
 A reference client implemented in JavaScript may be shipped with this whitepaper. Initial support may be limited to GitHub only, thanks to GitHub's extensive REST and GraphQL APIs.
 
@@ -479,5 +492,90 @@ Future iterations may also ship a Node.js backend to serve a REST-API wrapper fo
 
 Implementations in other languages and support for specific providers may be developed by the community.
 
-## Migration and Forkability
-Because data and key–value mappings co-exist within a single Git repository (SSoT), migrating a Git-KeyVal registry is primarily a matter of copying objects and refs. A fork or mirror clone yields a complete, self-contained snapshot of the registry. Implementations may rewrite, delete, or reorganize refs to construct a fresh registry without rewriting object data, making migrations, backups, and experimental ref layouts inexpensive and reversible.
+## Low-Cost Custom CDN
+Production-grade public CDNs such as jsDelivr, Statically, and raw.githack currently serve only a limited set of well-known Git hosting providers, such as GitHub and GitLab. To enable efficient Route A fetches for other providers and for self-hosted Git servers, developers, organizations, and communities may deploy custom CDNs at very low cost.
+
+Two practical deployment models are outlined below.
+
+### Single Git-client behind Cloudflare Orange Cloud
+- Host a lightweight REST-API backend on a low-cost VPS or home server. The backend fetches commits and blobs on demand using either:
+    - git fetch, or
+    - upload-pack over Git wire-protocol v2.
+
+- Use Cloudflare as the reverse proxy and DNS provider for this backend.
+Even the free tier may be sufficient and automatically provides:
+    - global CDN caching,
+    - DDoS mitigation,
+    - and SSL/TLS termination.
+
+- Cloudflare cache rules may be configured to:
+    - cache HTTP 200 responses to `GET` requests indefinitely, and
+    - cache non-200 `GET` responses (e.g. 404) for a limited duration only.
+    
+    Because Git objects are immutable and content-addressed, such aggressive caching is safe and requires no cache invalidation.
+
+### Distributed peer-to-peer edge nodes
+- Deploy multiple Git-aware, IPFS-enabled edge nodes across geographically distributed low-cost VPSs or home servers. Each node runs the same REST-API backend.
+
+- Use GeoDNS to route client requests to the nearest available edge node.
+
+- On cache miss:
+    1. The edge node first attempts to retrieve the requested Git object from peer edge nodes via IPFS.
+    2. Only if the object is unavailable in the peer network does the node request it from the SSoT using:
+        - git fetch, or
+        - upload-pack (wire-protocol v2).
+
+- Once retrieved, objects are stored in the node’s local IPFS block store and become immediately available for future requests and peer sharing.
+
+These designs minimize load on the SSoT, enable global deduplication, and provide scalable, trustless, CDN-like performance using commodity infrastructure.
+
+## Adoption by Users and Providers
+Git-KeyVal is intentionally designed so that adoption does not require coordinated rollout, provider cooperation, or changes to existing Git infrastructure or its downstream CDNs. The following suggestions outline how both users and commercial providers may adopt Git-KeyVal incrementally and economically.
+
+### Client and community adoption
+
+Users and developers may adopt Git-KeyVal immediately using existing Git hosting providers and standard Git tooling.
+
+- Existing repositories may be used without modification. Git-KeyVal objects coexist safely with existing commits and refs, and do not rewrite or interfere with repository history.
+
+- Client-side implementations can construct data-objects and containers deterministically and perform:
+    - atomic multi-ref updates for KV writes, and
+    - CDN-accelerated, trustless reads via Route A.
+
+- Self-hosting is straightforward:
+    - a bare SSoT repository,
+    - a lightweight backend operating locally via the Git CLI,
+    - and custom CDN.
+
+This enables individual developers, open-source projects, and communities to deploy strongly consistent key–value storage at very low cost, without relying on specialized providers.
+
+### Commercial provider adoption
+
+Commercial providers may adopt Git-KeyVal as a low-cost, high-scale key–value service by leveraging Git’s native strengths and modern CDN infrastructure.
+
+- Providers may operate shared Git object stores backing many Git-KeyVal repositories, benefiting from:
+    - global content-addressed deduplication,
+    - reuse across repositories and tenants,
+    - and append-only storage patterns.
+    
+    Using techniques such as `git mktree --missing`, bulk data blobs may be stored in external or shared object stores, while Git repositories retain only lightweight metadata (commits, trees and refs).
+
+- Multithreaded backends operating locally on the SSoT may perform high-throughput, atomic KV writes using:
+    - reftables,
+    - batched ref updates,
+    - and standard Git maintenance operations.
+
+- Read scalability may be achieved by exposing canonical URLs for distributed, low-latency downloads via Route A.
+
+- Monetization may target optional value-added services such as:
+    - Higher ratelimits
+    - Large blob storage using managed LFS
+    - Availability and uptime SLAs
+    - Managed CDN endpoints
+    - Atomic multi-key reads with freshness guarantees
+    - Extended write logs or version history via Git reflogs
+    - Usage analytics
+    - Custom TTL policies (e.g. sub-day granularity)
+    - Ephemeral or single-use data storage
+
+- Open-source SDKs may be published as reusable packages for rapid integration with existing client-side implementations of Git-KeyVal.
