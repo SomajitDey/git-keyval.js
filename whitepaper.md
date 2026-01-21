@@ -542,10 +542,16 @@ Users and developers may adopt Git-KeyVal immediately using existing Git hosting
     - atomic multi-ref updates for KV writes, and
     - CDN-accelerated, trustless reads via Route A.
 
+- Migrating to a new provider is rapid:
+    - clone repo to new host
+    - integrate provider API with client-side implementation using SDK shipped by the provider or developed by the community
+
 - Self-hosting is straightforward:
     - a bare SSoT repository,
     - a lightweight backend operating locally via the Git CLI,
     - and custom CDN.
+
+- By adopting open source clients, users require minimal trust in providers. Clients can verify integrity after each read, and users may independently inspect state by cloning the repository locally at any time. Due to such client-side verifiability and migration pressure (churn), providers are disincentivized from breaking protocol compatibility (for example, by using refs that point directly to blobs instead of commits).
 
 This enables individual developers, open-source projects, and communities to deploy strongly consistent key–value storage at very low cost, without relying on specialized providers.
 
@@ -560,7 +566,7 @@ Commercial providers may adopt Git-KeyVal as a low-cost, high-scale key–value 
     
     Using techniques such as `git mktree --missing`, bulk data blobs may be stored in external or shared object stores, while Git repositories retain only lightweight metadata (commits, trees and refs).
 
-- Multithreaded backends operating locally on the SSoT may perform high-throughput, atomic KV writes using:
+- Multithreaded REST-API-backends operating locally on the SSoT may perform high-throughput, atomic KV writes using:
     - reftables,
     - batched ref updates,
     - and standard Git maintenance operations.
@@ -577,5 +583,14 @@ Commercial providers may adopt Git-KeyVal as a low-cost, high-scale key–value 
     - Usage analytics
     - Custom TTL policies (e.g. sub-day granularity)
     - Ephemeral or single-use data storage
+    - Containers with higher cardinality (larger commit objects)
+    - Custom webhooks triggerred by writes
+    - CI for (mono)repos containing both code (standard Git usage) and data (KV)
 
 - Open-source SDKs may be published as reusable packages for rapid integration with existing client-side implementations of Git-KeyVal.
+
+- Providers specializing exclusively in Git-KeyVal as a service may require all write operations and authoritative read operations to be performed via authenticated REST-API endpoints. In such deployments,
+    - `receive-pack` may be disabled to prevent direct `git push` access.
+    - `upload-pack` may be strictly rate-limited, permitting limited `git clone` and `git fetch` operations.
+
+    The API must act as a thin, transparent wrapper over standard Git object creation and atomic ref updates, and must not introduce provider-specific semantics or non-canonical object encodings.
