@@ -1,27 +1,24 @@
 # Git-KeyVal
-A Git-native, provider-agnostic, IPFS-aware protocol defining a content-addressed and reuse-friendly key–value registry with atomic writes, fast, scalable, trustless reads, optional encryption and TTL-based lifecycle management.
+A Git-native, provider-agnostic, IPFS-aware protocol defining a content-addressed, deduplicated key–value registry with atomic writes, fast, scalable, trustless reads, optional encryption, TTL-based lifecycle management, key-aliasing and version-logs.
 
 It can turn even an existing Git repository into a key-value store without requiring any server-side configuration and without corrupting, rewriting or deleting any existing repository data.
 
-Git-KeyVal is not a hack. It is designed from the ground up to align with Git's core object model, storage optimizations, and standard semantics, while deliberately avoiding known Git performance bottlenecks in indexing, traversal, and object retrieval. Git-KeyVal does not fight or coerce Git. With Git-KeyVal, Git *naturally* evolves from a *version-control repository for source-code* to an *indexed, deduplicated repository for typed and structured data, with optional version-logging and TTL-based lifecycle semantics*.
+Git-KeyVal is not a hack. It is designed from the ground up to align with Git's core object model, storage optimizations, standard semantics and best practices, while deliberately avoiding known Git performance bottlenecks in indexing, traversal, and object retrieval. Git-KeyVal does not fight or coerce Git. With Git-KeyVal, Git *naturally* evolves from a *version-control repository for source-code* to an *indexed, deduplicated repository for typed and structured data*.
 
 **Quick Links**: [Specifications](./specifications.md) | Reference Implementation (JS) | [Glossary](./glossary.md)
 
 ## Audience
 This protocol is designed for those end-users who
-- require low-cost, durable object storage with scalable, globally distributed, low-latency reads at minimal operational complexity
+- require low-cost, durable object storage with scalable, globally distributed, low-latency, verifiable reads at minimal operational complexity
 - need an unrestricted-read, access-controlled-write registry usable by stateless backends and backendless frontends
 - want to avoid vendor lock-in and require low-friction migration via standard Git forks, mirrors, clones 
 - can afford infrequent high-latency writes with optimistic concurrency control. Some vendors, however, may provide low-latency writes through a managed REST API built atop this protocol
 - accepts eventual consistency and reasonable staleness during reads. Multi-key reads are not guaranteed to be transactional. Some providers, however, may provide atomic multi-key reads with freshness guarantees, albeit gated behind stricter ratelimits or higher subscription tiers
 - preferably, reuse both keys and values
 - do not mind optionally encrypting their data with a repo-scoped salt for optimal intra-repo reuse (prevents only cross-repo correlation)
-- accept version-log, if required, via persistent immutable CDN-cacheable Git tags instead of mutable branches with linear histories. Some providers, including GitHub, may expose history through ref-logs
-- rarely, if at all, need to list all the key-value pairs
-- accept support for containers such as arrays and dictionaries (hash-maps) as subopitmal second-class citizens
-- optionally, need to use existing Git repository for storing key-value registry without corrupting existing data
+- may need to use existing Git repository for storing key-value registry without corrupting existing data
 
-Although this protocol is designed to work over any Git-hosting provider&mdash; including GitHub, GitLab, Bitbucket, and self-hosted or on-premise Git servers&mdash; providers that align their infrastructure with this protocol can offer low-cost, durable object storage with access-controlled atomic writes, scalable, globally distributed CDN-backed reads, optional encryption, optional read atomicity and TTL-based lifecycle management.
+Although this protocol is designed to work over any Git-hosting provider&mdash; including GitHub, GitLab, Bitbucket, and self-hosted or on-premise Git servers&mdash; providers that align their infrastructure with this protocol can offer durable object storage with [useful features](#commercial-provider-adoption) at extremely competitive pricing.
 
 For a quick appreciation of scope, refer to the [example-use-cases](./example-use-cases.md).
 
@@ -32,7 +29,6 @@ The protocol is not optimized for
 - low-latency, high-throughput write workloads such as counters, metrics or ratelimiters
 - atomic multi-key reads
 - any TTL granularity lower than a day
-- containers such as arrays or dictionaries &mdash; supported yet suboptimal
 
 While these use cases fall outside the protocol’s design goals, providers may support or optimize for them via a REST API built atop the protocol, without extending or weakening its core guarantees.
 
@@ -87,6 +83,8 @@ This protocol requires a Git repository. Users who do not opt for self-hosting m
 
 ## Design Overview
 This section assumes the reader have atleast basic understanding of [Git and its internals](https://git-scm.com/book/en/v2), and [content-addressed file-sharing in IPFS](https://docs.ipfs.tech/concepts/lifecycle/).
+
+Design details that are out of the scope of this whitepaper may be found in [specifications.md](./specifications.md).
 
 ### Why Git
 This protocol does not view Git as a mere version-control system for source-codes. Instead it reimagines Git as an *optimal object-storage* (i.e. deduplicated data and metadata with low-entropy contents aggressively delta-compressed and deflated) *with an extremely efficient key-value based index* (i.e. Git refs with reftables) *and object-retrieval* (i.e. pack-index).
@@ -173,21 +171,27 @@ Multiple indices may reference the same member, enabling aliasing and reuse. Con
 
 Explicit support for data-containers discourages users from implementing containers with data-objects, such as JSON strings. Such hacks lead to excessive object churn (a unique blob, tree and commit per container state) and cannot optimize by reusing the member objects.
 
-A container may be encoded in a second-generation commit with multiple parents, each of which is a first-generation or root commit.
+A container may be encoded in a commit with multiple parents, each of which is a root commit.
 
 - The parent commits point to the member objects. This design ensures that member commits remain reachable as long as the container commit itself is reachable.
 
-- The index-object map may be efficiently encoded in the commit message.
+- The `index => member` map may be efficiently encoded in the commit message.
 
-- The root-tree encodes the container's cardinality in the data-bytes blob, along with the members' shared data-type and encryption-status in the data-type blob. Data-type and encryption-status may store `mixed` for heterogenous containers. A root-tree is reusable across all containers with the same cardinality, data-type and encryption-status.
+- The root-tree lists the container's indices (not the `index => member` map) and encodes its cardinality and the members' shared data-type and encryption-status. Data-type and encryption-status may read `mixed` for heterogenous containers. A root-tree is reusable across all containers that share the same set of indices (hence cardinality), data-type and encryption-status.
 
-In standard Git lingo, a container commit is an octopus merge. However, in Git-KeyVal, an octopus merge only represents a collection of (parent) commits, not merged histories. Parent commits represent membership, not ancestry. No tree merging, conflict resolution, or history semantics are involved.
-
-Details of the commit-message encoding along with a discussion of the compression-performance tradeoffs may be found [elsewhere](./specifications.md).
+In standard Git lingo, a container commit would be an octopus merge. However, in Git-KeyVal, an octopus merge only represents a collection of (parent) commits, not merged histories. Parent commits represent membership, not ancestry. No tree merging, conflict resolution, or history semantics are involved.
 
 ### Fetching a data-container
 
-To retrieve a container, the corresponding commit-object may simply be fetched and parsed using Route B > Step-1 (with `depth 1`). The actual member-objects, pointed to by the indices, may then be fetched lazily from the parent commit-OIDs using Route A, as and when needed.
+To retrieve a container, the corresponding commit-object and its root-tree may simply be fetched and parsed using Route B > Step-1
+ - with `depth 1` and `filter=combine:tree:1+blob:none`, if using `upload-pack`
+
+ - with commit-OID > tree-OID, if using IPFS
+(CID derived from Git-OID)
+
+The actual member-objects, pointed to by the indices, may then be fetched lazily from the parent commit-OIDs using Route A, as and when needed.
+
+Efficient fetching of a container that includes other container(s) as member(s) is out of the scope of this whitepaper, and may be found [elsewhere](./specifications.md).
 
 Note: If only type and cardinality are required for a container, the CDN-backed Route A may be used, without fetching the commit-object at all.
 
@@ -200,23 +204,21 @@ Because data-objects and -containers are simply Git-objects (commits, trees and 
 ### Keys and values
 Any data-object may be a key or a value. Data-containers, however, can only be values.
 
-A key-value map may be manifested as a unique Git ref, derived from the key object, pointing to the value object.
+A key-value map may be manifested as a unique Git ref that is canonically derived from the key object and points to the value object.
 
-### TTL-based expiry
-
-For storing expiry timestamps, key-expiry maps may be implemented using additional refs with appropriate prefix (designed for optimal listing of refs during the periodic stale-cleanup operations).
+Note: Reftables optimize ref-storage with prefix-compression. String keys therefore benefit from sharing prefixes and non-string keys from sharding.
 
 ### KV reads
 Reads amount to
 1. ref-resolutions from the SSoT using
     - provider API (preferred)
-    - Git-wire-protocol-v2 `upload-pack` with `fetch` using prefix(es)
+    - Git-wire-protocol-v2 `upload-pack` with `fetch`
 
 2. object-fetches via Route A or B as described above.
 
 ### KV writes
 Writes amount to
-1. Creating and pushing the required Git objects (blobs, trees and commits) if non-existent.
+1. Creating and pushing the required Git objects (blobs, trees and commits), if non-existent.
 
 2. Pushing atomic (multi) ref-updates with the following compare-and-swap schema:
 ```
@@ -233,11 +235,11 @@ If using `receive-pack` for push, both objects (packfile) and ref-updates may be
 KV deletions are simply ref-updates with `000000000000000000000000000000000000000` as the new target commit-OID.
 
 ### Server-side setup (optional)
-Self-hosted instances as well as providers aligned with Git-KeyVal may host a REST-API backend that can access the SSoT repository on local filesystem, using the powerful and performant Git CLI. For writes, ref-resolutions and commit-object fetches, clients may use this API directly, bypassing the Git-wire-protocol-v2 route and its corresponding performance bottlenecks and complexities. This enables, among other optimizations, high write throughput, transactional reads with multi-key consistency and update logs. 
+Self-hosted instances as well as providers aligned with Git-KeyVal may host a REST-API backend that can access the SSoT repository on local filesystem, using the powerful and performant Git CLI. For writes, ref-resolutions and commit-object fetches, clients may use this API directly, bypassing the Git-wire-protocol-v2 route and its corresponding performance bottlenecks and complexities. This enables, among other optimizations, high write throughput and transactional reads with multi-key consistency.
 
 - For writes, the backend may accept the payload from client and perform fast (thanks to reftables), atomic updates on the repo in batches using
     ```bash
-    git update-ref --create-reflog --stdin [--batch-updates] < transaction-script.txt
+    git update-ref --stdin [--batch-updates] < transaction-script.txt
     ```
     New objects may be created from the payload using
     ```bash
@@ -269,245 +271,22 @@ Self-hosted instances as well as providers aligned with Git-KeyVal may host a RE
     git cat-file -p <OID>
     ```
 
-- History may be exposed using
-    ```bash
-    git reflog show
-
-    git log --walk-reflogs
-    ```
-
 ### Further reading
-For further details, rationales and nuances including CDN-served canonical download URLs, see the [protocol specifications](./specifications.md).
+For further details, rationales and nuances including optional features such as
 
-## Specifications
-In the following, JavaScript (JS) is used as the reference implementation.
+- TTL-based expiry,
+- version-logging,
+- key-aliasing and
+- CDN-served canonical download URLs,
 
-### Object Model (v1.0.0)
-    Object Model (OM) is versioned independently of the Protocol
-A single logical object (data + metadata) must be retrievable from a deduplicated, self-contained Git commit. 
-- Data refers to the raw bytes of encrypted cipher (if user provides codec) or plaintext (default). This is stored as a reusable Git blob.
-- Metadata is stored as a sorted and minified JSON in another reusable Git blob. It is formatted as
-```JSON
-{
-    "omVersion": <OM version>,
-    "implementation": <string>,
-    "type": {
-        "name": <string>,
-        ...
-    },
-    "dataPaths": [
-        "raw",
-        ...
-    ],
-    "encrypted": <boolean>
-}
-```
-For example, metadata for a `Blob`-type in JS:
-```JSON
-{
-    "omVersion": "1.0.0",
-    "implementation": "JS",
-    "type": {
-        "name": "Blob",
-        "mimeType": "image/jpeg"
-    },
-    "dataPaths": [
-        "raw",
-        "data.jpeg"
-    ],
-    "encrypted": false
-}
-```
-    For any given implementation, the set of possible metadata blobs MUST be finite or otherwise bounded, and is therefore suitable for permanent caching.
-- Data and metadata are packed inside a Git tree containing only the following paths
-    - `package.json` => metadata-blob
-    - `raw` => data-blob
-    - Any custom pathname listed in `dataPaths` key in metadata => data-blob
-- This tree is enveloped in a root Git commit that
-    - contains only this tree
-    - has no parents, hence root
-    - has invariant committer, author and commit message
-    ```JSON
-    {
-        "authorCommitter" : {
-            "name": "Git KeyVal",
-            "email": "no-reply@git.kv",
-            "timestamp": <epoch>
-        },
-        "commitMessage": {
-            "omVersion": <OM version>,
-            "objectType": "generic", 
-            "size": <number of bytes in data blob>,
-            "dataOid": <hex OID of data blob>,
-            "metaOid": <hex OID of metadata blob>
-        }
-    }
-    ```
-- Commit message description is canonically serialized from the above JSON (stringification after minification and sorting by its keys).
-- Commit message header contains the string: `See README.md for description and disclaimer`
-- Commit message description explicitly records the size of the data blob and all the reachable blob OIDs for cacheability and integrity checks
-- Epoch is chosen to be `2025-01-01T00:00:00Z`
-- Expiry objects are special objects with the following differences from the generic objects described above
-    - data is an unencrypted integer
-    - no metadata blob is stored
-    - root tree contains only the `raw` path
-    - epoch is rolling (to be defined below)
-    - commit message reads
-    ```JSON
-    "commitMessage": {
-            "omVersion": <OM version>,
-            "objectType": "expiry", 
-            "size": <number of bytes in data blob>,
-            "dataOid": <hex OID of data blob>
-        }
-    ```
-
-### Key-Value Mapping
-- Key is stored as a generic object with a deduplicated commit OID (`keyOid`)
-- Key is identified, however, with a key-ID (`kid`) derived as follows
-```
-kid = SHA1(metadata.type || plaintextBlobOid)
-
-plaintextBlobOid => OID of Git Blob containing the key-object's raw bytes before encryption, if any
-
-metadata.type => stringified and minified JSON value of the "type" field in the metadata JSON
-```
-
-- Value object is identified with its commit OID (`valOid`)
-- A Git ref derived from `kid` points to `valOid`
-```JSON
-{
-    "refs/<namespace>/key-<kid_shard>/<kid_trail>-kv": <valOid>
-}
-```
-    - default namespace is implementation dependent. User can choose a custom namespace
-    - kid and valOid must be encoded as lowercase hexadecimal
-    - kid_shard is derived from the first two hexadecimal characters of kid
-    - scalability may be achieved via repository-level sharding, for example, by distributing keys across multiple repositories using a deterministic function of `kid` (e.g. suffix-based partitioning), rather than relying on deep ref hierarchies
-
-For example, for
-- namespace: kv
-- kid: `4a8f050a786cc81c4682a902720db6376d0709c6`
-- valOid: `ea3011a26435f23031e0c81ed34a143aed732575`
-
-the corresponding ref is
-```JSON
-{
-    "refs/kv/key-4a/8f050a786cc81c4682a902720db6376d0709c6-kv": "ea3011a26435f23031e0c81ed34a143aed732575"
-}
-```
-
-### Key-Expiry Mapping
-- A key can either be persistent or have an expiry
-- TTL granularity is intentionally limited to days, along with a bounded maximum TTL (1800 days), to keep active expiry metadata small, deduplicable, and CDN-cacheable
-- The following elucidates the computation of `expiryWindow` and `expiryIndex` for a given expiry (`expireAt`), the epoch (`epoch`), and number of windows (`M`= 60)
-```
-Let Δ = expireAt − epoch (both in days since the Unix Epoch)
-
-expiryWindow = Δ mod M
-expiryIndex  = floor(Δ / M)
-
-Reconstruction:
-expireAt = epoch + expiryIndex * M + expiryWindow
-```
-- `expiryIndex` and `expiryWindow` are stored as expiry objects with deduplicated commit OIDs.
-- A Git ref derived from `keyOid` points to `expiryWindowOid`
-```JSON
-{
-    "refs/<namespace>/key-<kid_shard>/<kid_trail>-kx": <expiryWindowOid>
-}
-```
-- A Git ref prefixed with `expiryWindow` (the integer, not the commit OID) and otherwise derived from `keyOid` points to `expiryIndexOid`. Here, sharding is achieved with `expiryWindow`-based partitioning
-```JSON
-{
-    "refs/<namespace>/exp-<expiryWindow>/<kid>": <expiryIndexOid>
-}
-```
-- Persistent keys do not have any expiry refs.
-
-#### Rolling epochs for expiry objects
-To keep expiry related objects bounded in long-lived repositories, the epoch is rotated every 5 years as follows. The generic objects however may continue to use the first epoch as their committer or author timestamps, enabling timeless reusability.
-
-An epoch is defined as `YYYY-01-01T00:00:00Z` where the year `YYYY` must be divisible by 5. The active epoch is the most recent such year less than or equal to the current year. E.g. in 2043 the epoch would be `2040-01-01T00:00:00Z`.
-
-Because TTL is capped at 1800 days and epoch is rotated every 5 years, unexpired keys can only have been set either in the active epoch or its previous epoch. Which epoch an expiry object belongs to may be derived as follows (without reading the commit timestamp). Upon retrieving the integer from the expiry object, compute the expiry object's commit OID for both the active epoch and its previous epoch. Whichever matches the actual commit OID indicates the appropriate epoch. If none matches, the key is considered stale.
-
-With 5 yearly epoch rotation, `M`=60 and a TTL cap at 1800 days, `expiryIndex` is capped at ~ 60. Both `expiryWindow` and `expiryIndex` therefore can use expiry objects from the same active set of ~ 60 Git commits.
-
-#### Stale key removal
-Implementations may perform a lazy, daily scan of refs grouped or prefixed by the current day’s `expiryWindowOid`. This way, for `M`=60, each window is scanned every 2 months. In addition, implementations may randomly select one or more other `expiryWindowOid` values for scanning, in order to tolerate missed or delayed scans. Keys whose reconstructed `expiryAt` is less than or equal to the current day may have their key–value and expiry refs deleted.
-
-### Key Retention
-To support key retrieval (such as during key–value listing), implementations may create a Git ref derived from `kid` that points to `keyOid`, thereby keeping the key object reachable and preventing garbage collection.
-```JSON
-{
-    "refs/<namespace>/key-<kid_shard>/<kid_trail>": <keyOid>
-}
-```
-
-### Listing of Keys
-Listing all refs matching the prefix `refs/<namespace>/key-<shard>/` yields all key-value pairs along with which keys are not persistent, shard-wise.
-
-### Atomic Writes with Optimistic Concurrency Control
-- All writes are atomic
-- Implementations must provide methods for both conditional and unconditional writes with the following schema (illustrative only):
-```JS
-function write (
-    [
-        {
-            key: <required>,
-            newValue: <optional>,
-            oldValue: <optional>,
-            overwrite: <optional boolean>,
-            ttl: <optional non-negative integer>,
-            listable: <optional boolean>,
-            typeSafe: <optional boolean>
-        },
-        ...
-    ]
-) {
-
-}
-```
-- This schema allows users to pack multiple key updates in a single atomic transaction
-- If `oldValue` is provided, `overwrite` is ignored
-- If the key does not exist and `overwrite: true` or `oldValue` is present, it would not be created
-- If `ttl` is absent, the write operation keeps the existing expiry, if any, unchanged
-- If `ttl` is 0, key is made persistent
-- If the key does not yet exist and `ttl` is absent, the key is created without an expiry
-- If no `newValue` is provided, key is deleted
-- If any conditional check fails, the entire write operation is aborted with no observable side-effects
-- The actual writes to the Git server are achieved internally using Git `receive-pack` requests with `atomic` capability. The Git CLI equivalent is 
-```bash
-git push --atomic \
- --force-with-lease=<key-ref-kv>:<oldValOid> \
- <newValOid>:<key-ref-kv> \
- <expiryWindowOid>:<key-ref-kx> \
- <expiryIndexOid>:<exp-ref>
-```
-- If a user-provided codec is supplied, the `newValue` must be encrypted before being written to any Git object
-- In this case, the corresponding metadata object MUST include `encrypted: true`
-- If no codec is supplied, `newValue` must be stored in plaintext, and metadata must include `encrypted: false`.
-
-### Reads
-- Unlike the write method which requires the key as a parameter, the read method can also take `kid` instead of a key.
-- Reading a value is performed in the following steps
-    1. Resolution of the `kv`-suffixed ref derived from the `kid` (itself derived from the logical key). This yields `valueOid`. Resolution is performed using Git's smart HTTP protocol v2 via the `ls-refs` command with the appropriate prefix(es).
-    2. Retrieve the corresponding object (data + metadata) using a CDN or a user-provided custom retrieval method, based on `valueOid`.
-    3. If the retrieved metadata indicates `encrypted: true`, decrypt the data using the user-provided codec.
-- Reading an expiry is also done in three steps
-    1. Resolve the `kx`-suffixed ref derived from the `kid`, yielding `expiryWindowOid`, using `ls-refs` over Git's smart HTTP protocol v2.
-    2. Resolve the `exp-<expiryWindowOid>`-prefixed ref derived from the same `kid`, yielding `expiryIndexOid`, again using `ls-refs`.
-    3. Retrieve the integer values represented by the commits `expiryWindowOid` and `expiryIndexOid`, preferably from a local cache. On cache miss, retrieve them from a CDN or via a user-provided custom method, and reconstruct `expiryAt`.
-- If CDN-based or user-provided retrieval methods fail, implementations may retrieve objects directly from the Git server using `upload-pack`. This, however, adds latency and server load.
-- Implementations must provide separate methods for value and expiry reads, each supporting multiple keys. For efficiency, value reads may yield stale values for expired keys unless user specifically opts for non-stale values.
-- Multi-key reads are not atomic. Ref resolution via `ls-refs` does not guarantee that all returned refs correspond to a single repository snapshot. As a result, concurrent writes may cause different keys to be resolved against different repository states. This protocol intentionally uses a single ref per key for key–value mapping in order to guarantee single-key read consistency, even in the presence of concurrent writes.
-
-### Public CDN URLs
-If encryption is absent, implementations may derive or expose a public CDN URL for directly downloading the value for any given key, with appropriate CORS and Content-Type headers. A path with an extension (other than `raw` and `package.json`) exists inside the root tree (as specified in the Object Model) so that a CDN can set the proper Content-Type headers when serving that path.
+see the [protocol specifications](./specifications.md).
 
 ## Migration and Forkability
-Because data and key–value mappings co-exist within a single Git repository (SSoT), migrating a Git-KeyVal registry is primarily a matter of copying objects and refs. A fork or mirror clone yields a complete, self-contained snapshot of the registry. Implementations may rewrite, delete, or reorganize refs to construct a fresh registry without rewriting object data, making migrations, backups, and experimental ref layouts inexpensive and reversible.
+Because all data, mappings (such as `key => value`, `key => expiry`, `alias => key`) and logs co-exist within a single Git repository (SSoT), migrating a Git-KeyVal registry is simply a matter of cloning the repository.
+
+If all blobs are permanently cached by a CDN (content-addressed and retrievable via commit OID and path, as is done by jsDelivr for example), IPFS or some other object-store (such as Amazon S3 or Cloudflare R2), one only needs to perform a blob-less partial clone when porting the repository, with blobs fetched lazily on demand. This preserves full verifiability of the object graph while minimizing transfer size.
+
+For GitHub in particular, two registries that are supposed to share most data (keys and values) may benefit from being forks of each other. This is because, GitHub uses the same object pool for forks.
 
 ## Implementation Roadmap
 A reference client implemented in JavaScript may be shipped with this whitepaper. Initial support may be limited to GitHub only, thanks to GitHub's extensive REST and GraphQL APIs.
